@@ -345,6 +345,11 @@
       <div class="hint">El receptor usa tu misma puerta segura (panel_get / panel_set)
         pero guarda en una fila aparte, con el sufijo <b>:receptor</b>.
         No toca los datos de tu journal.</div></div>
+    <div class="fld"><label>Corrección de hora de MetaTrader (minutos)</label>
+      <input type="number" id="cOff" step="15" style="width:110px">
+      <div class="hint">MetaTrader manda la hora del servidor del broker, no la tuya.
+        Con <b>-60</b> resta una hora a las operaciones de MetaTrader antes de agrupar.
+        Si algún cambio de horario lo descuadra, ajústalo aquí.</div></div>
     <div class="fld"><label>Valor del punto en $ (solo si la fuente no manda el resultado)</label>
       <input type="text" id="cPuntos">
       <div class="hint">MetaTrader ya manda el resultado calculado y se usa ese.
@@ -357,7 +362,7 @@
 </dialog>
 
 <script>
-const VER = "1.0";
+const VER = "1.3";
 "use strict";
 
 const PUNTOS_DEF = "ES=50,MES=5,NQ=20,MNQ=2,YM=5,MYM=0.5,RTY=50,M2K=5,"
@@ -392,6 +397,9 @@ const cfg = (function(){
     // unos minutos despues y sigue siendo la misma operacion.
     tolMin : Number.isFinite(g.tolMin) ? g.tolMin
              : (Number.isFinite(g.tol) ? Math.max(3, g.tol / 60) : 3),
+    // MetaTrader manda la hora del servidor del broker, que va adelantada.
+    // Estos minutos se SUMAN a las horas de origen mt5 (-60 = una hora menos).
+    offMin : Number.isFinite(g.offMin) ? g.offMin : -60,
     rango  : g.rango || "todo",
     desde  : g.desde || "", hasta: g.hasta || "",
     // Por defecto solo NinjaTrader. MetaTrader y los fills de prueba del panel,
@@ -665,9 +673,41 @@ async function traerFills(desdeCero){
 // ---------------------------------------------------------------------------
 // Fills -> operaciones
 // ---------------------------------------------------------------------------
+// Familias de activo. El mismo indice se llama distinto en cada plataforma
+// (MNQ en NinjaTrader, NAS100 o USTEC en MetaTrader) y para agrupar da igual
+// cual sea el contrato concreto: lo que importa es que sea el mismo mercado.
+const FAMILIAS = [
+  ["NASDAQ",  /^(M?NQ|NAS100|USTEC|US100|NDX|NAS|USATEC|NASDAQ)/],
+  ["SP500",   /^(M?ES|SPX500|US500|SP500|SPX|SP)/],
+  ["DOW",     /^(M?YM|US30|DJI|DOW)/],
+  ["RUSSELL", /^(RTY|M2K|US2000)/],
+  ["DAX",     /^(F?DAX|FDXM|GER40|DE40)/],
+  ["ORO",     /^(M?GC|XAUUSD|GOLD|ORO)/],
+  ["PETROLEO",/^(M?CL|USOIL|WTI)/]
+];
+function familia(simbolo){
+  // "MNQ 12-26", "NAS100.cash", "mnq_dic26" -> "MNQ", "NAS100", "MNQ"
+  const s = String(simbolo || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  for (const [nombre, re] of FAMILIAS) if (re.test(s)) return nombre;
+  // Desconocido: se agrupa solo consigo mismo, sin el vencimiento
+  // ("XYZ 12-26" y "XYZ 03-27" cuentan como el mismo activo).
+  return s.replace(/\d+$/, "") || s || "?";
+}
+
+// Nombre con el que se muestra y se manda al journal.
+const ETIQUETA = { NASDAQ:"NDQ" };
+function etiqueta(simbolo){
+  return ETIQUETA[familia(simbolo)] || simbolo;
+}
+
+// Minutos a corregir segun de donde venga la operacion. Solo MetaTrader.
+function desfase(origen){
+  return origen === "mt5" ? (Number(cfg.offMin) || 0) * 60000 : 0;
+}
 function hora(f){
   const t = Date.parse(String(f.at||"").replace(" ","T"));
-  return Number.isFinite(t) ? t : 0;
+  if (!Number.isFinite(t)) return 0;
+  return t + desfase(f.source);
 }
 // Comision siempre como coste: negativa. NT8 la manda positiva, MT5 negativa.
 function coste(c){ return -Math.abs(Number(c)||0); }
@@ -799,7 +839,9 @@ function fusionarGrupos(lista){
     for (let i = fuera.length - 1; i >= 0; i--){
       const c = fuera[i];
       if (o.t0 - c.t0 > tol + 60000) break;
-      if (c.simbolo !== o.simbolo || c.dir !== o.dir || c.origen !== o.origen) continue;
+      // Aqui NO se exige la misma plataforma: la misma entrada puesta en Apex
+      // y en MetaTrader es una sola operacion con replicas en las dos.
+      if (familia(c.simbolo) !== familia(o.simbolo) || c.dir !== o.dir) continue;
       if (Math.abs(c.t0 - o.t0) > tol) continue;
       if (o.t0 > c.t1 || c.t0 > o.t1) continue;          // no coincidieron abiertas
       const repes = o.cuentas.some(x => c.cuentas.some(y => y.cuenta === x.cuenta));
@@ -946,7 +988,7 @@ function pintar(){
       '<td><span class="caret">&#9654;</span></td>' +
       '<td class="num">' + hhmmss(o.t0) + '</td>' +
       '<td class="num">' + (o.abierta ? "—" : hhmmss(o.t1)) + '</td>' +
-      '<td><b>' + esc(o.simbolo) + '</b> <span class="tag src">' + esc(o.origen) + '</span></td>' +
+      '<td><b>' + esc(etiqueta(o.simbolo)) + '</b> <span class="tag src">' + esc(o.origen) + '</span></td>' +
       '<td class="' + (o.dir==="Long"?"long":"short") + '">' + (o.dir==="Long"?"LARGO":"CORTO") + '</td>' +
       '<td class="r num">' + fmt(o.qty, o.qty%1 ? 2 : 0) + '</td>' +
       '<td class="r num">' + fmt(o.pEnt,2) + '</td>' +
@@ -1018,7 +1060,7 @@ function detalle(o, m){
   td.innerHTML =
     '<div class="inner">' +
       '<h4>' + o.cuentas.length + (o.cuentas.length===1?" cuenta":" cuentas") + ' · ' +
-        esc(o.simbolo) + ' ' + (o.dir==="Long"?"largo":"corto") + ' · entrada ' + hhmmss(o.t0) +
+        esc(etiqueta(o.simbolo)) + ' ' + (o.dir==="Long"?"largo":"corto") + ' · entrada ' + hhmmss(o.t0) +
         (o.abierta ? "" : ' · salida ' + hhmmss(o.t1)) + '</h4>' +
       '<table><thead><tr><th>Cuenta</th><th>Contrato</th><th class="r">Cant.</th>' +
       '<th class="r">Entrada</th><th class="r">Salida</th><th class="r">Puntos</th>' +
@@ -1176,7 +1218,7 @@ function csv(){
   const l = [cab.join(";")];
   for (const o of visibles()){
     const m = metaDe(o.id);
-    l.push([ iso(o.t0), hhmmss(o.t0), o.abierta?"":hhmmss(o.t1), o.simbolo, o.dir, o.origen,
+    l.push([ iso(o.t0), hhmmss(o.t0), o.abierta?"":hhmmss(o.t1), etiqueta(o.simbolo), o.dir, o.origen,
       o.qty, o.pEnt.toFixed(4), o.pSal.toFixed(4), (o.porCuenta||0).toFixed(2), o.com.toFixed(2),
       o.neto.toFixed(2), o.cuentas.length,
       o.cuentas.map(t=> t.nombre + ":" + t.neto.toFixed(2)).join(" | "),
@@ -1334,7 +1376,7 @@ function opsDesdeCSV(texto){
   const fuera = [];
   for (let i = 1; i < lineas.length; i++){
     const c = partirCSV(lineas[i], sep).map(x => x.trim());
-    const t0 = fechaHoraMs(c[iFecha], c[iEnt]);
+    let t0 = fechaHoraMs(c[iFecha], c[iEnt]);
     if (!t0) continue;
     let t1 = iSal >= 0 ? fechaHoraMs(c[iFecha], c[iSal]) : t0;
     if (t1 < t0) t1 += 86400000;          // cruzo la medianoche
@@ -1342,6 +1384,8 @@ function opsDesdeCSV(texto){
     const simbolo = c[iSim] || "?";
     const dir     = /short|corto/i.test(c[iDir] || "") ? "Short" : "Long";
     const origen  = (c[iOrg] || "csv").toLowerCase();
+    const dsf = desfase(origen);
+    if (dsf){ t0 += dsf; t1 += dsf; }
     const qty     = num(c[iQty]);
     const total   = iTotal >= 0 ? num(c[iTotal]) : 0;
     const com     = iCom >= 0 ? num(c[iCom]) : 0;
@@ -1391,15 +1435,17 @@ function opsDesdeJSON(texto){
   const lista = Array.isArray(d) ? d : (d.ops ? Object.values(d.ops) : []);
   return lista.map(function(r){
     if (r.id && r.t0) return r;                  // ya es formato interno
-    const t0 = Date.parse(r.fecha || r.t0) || 0; // formato de aFila()
-    const t1 = Date.parse(r.cierre || r.t1) || t0;
+    const org = (r.origen || "json").toLowerCase();
+    const dsf = desfase(org);
+    let t0 = (Date.parse(r.fecha || r.t0) || 0) + dsf; // formato de aFila()
+    let t1 = (Date.parse(r.cierre || r.t1) || (t0 - dsf)) + dsf;
     const cuentas = (r.cuentas || []).map(c => ({
       cuenta:c.cuenta || c.nombre, nombre:c.nombre || c.cuenta, contrato:c.contrato || r.simbolo,
       qty:c.cantidad || 0, pEnt:c.entrada || 0, pSal:c.salida || 0, puntos:0,
       com:c.comision || 0, bruto:c.bruto || c.resultado || 0,
       neto:c.resultado || 0, abierta:false }));
     return { id: r.op_id || r.id, t0:t0, t1:t1, simbolo:r.simbolo,
-      dir:r.direccion || r.dir, origen:r.origen || "json",
+      dir:r.direccion || r.dir, origen:org,
       qty:r.cantidad || r.qty || 0, pEnt:r.precio_entrada || 0, pSal:r.precio_salida || 0,
       bruto:r.resultado_bruto || 0, com:r.comision || 0, neto:r.resultado || 0,
       porCuenta:r.resultado_por_cuenta || 0, abierta:false, cuentas:cuentas };
@@ -1586,6 +1632,8 @@ function resolverCuenta(cuentaNT8, origen, cuentasJ){
 
 function resolverActivo(simbolo, contrato, activosJ){
   if (cfg.mapActivos[simbolo]) return cfg.mapActivos[simbolo];
+  const fija = ETIQUETA[familia(simbolo)];
+  if (fija) return fija;
   const empieza = activosJ.find(a => a.toUpperCase().indexOf(simbolo.toUpperCase()) === 0);
   return empieza || activoLargo(simbolo, contrato);
 }
@@ -1845,7 +1893,7 @@ const dlg = el("dlg");
 el("bCfg").onclick = () => {
   el("cBridge").value=cfg.bridge; el("cToken").value=cfg.token;
   el("cSbUrl").value=cfg.sbUrl; el("cSbKey").value=cfg.sbKey; el("cBox").value=cfg.box;
-  el("cPuntos").value=cfg.puntos; dlg.showModal();
+  el("cPuntos").value=cfg.puntos; el("cOff").value=cfg.offMin; dlg.showModal();
 };
 el("bCerrar").onclick = () => dlg.close();
 el("bGuardar").onclick = () => {
@@ -1855,6 +1903,8 @@ el("bGuardar").onclick = () => {
   cfg.sbKey  = el("cSbKey").value.trim();
   cfg.box    = el("cBox").value.trim();
   cfg.puntos = el("cPuntos").value.trim() || PUNTOS_DEF;
+  const off = parseInt(el("cOff").value, 10);
+  cfg.offMin = Number.isFinite(off) ? off : 0;
   guardarCfg(); dlg.close();
   construir(); refrescar(); refrescarEstado(); traerFills(true).then(refrescar);
 };
