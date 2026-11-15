@@ -345,6 +345,12 @@
       <div class="hint">El receptor usa tu misma puerta segura (panel_get / panel_set)
         pero guarda en una fila aparte, con el sufijo <b>:receptor</b>.
         No toca los datos de tu journal.</div></div>
+    <div class="fld"><label>Historial guardado</label>
+      <button id="bVaciar">Vaciar el historial guardado</button>
+      <div class="hint">Borra las operaciones que hay guardadas en el cofre y en este
+        dispositivo, en todos los equipos. No toca tu journal ni los ficheros.
+        Úsalo cuando veas operaciones duplicadas o mal agrupadas: vacías y
+        vuelves a importar el CSV.</div></div>
     <div class="fld"><label>Corrección de hora de MetaTrader (minutos)</label>
       <input type="number" id="cOff" step="15" style="width:110px">
       <div class="hint">MetaTrader manda la hora del servidor del broker, no la tuya.
@@ -362,7 +368,7 @@
 </dialog>
 
 <script>
-const VER = "1.8";
+const VER = "1.9";
 "use strict";
 
 const PUNTOS_DEF = "ES=50,MES=5,NQ=20,MNQ=2,YM=5,MYM=0.5,RTY=50,M2K=5,"
@@ -524,16 +530,36 @@ function estadoLocal(){
 
 function comprimir(o){
   return { id:o.id, t0:o.t0, t1:o.t1, simbolo:o.simbolo, dir:o.dir, origen:o.origen,
+    off: Number(cfg.offMin) || 0,
     qty:o.qty, pEnt:o.pEnt, pSal:o.pSal, bruto:o.bruto, com:o.com, neto:o.neto,
     porCuenta:o.porCuenta, abierta:!!o.abierta,
     cuentas:o.cuentas.map(t=>({ cuenta:t.cuenta, nombre:t.nombre, contrato:t.contrato,
       qty:t.qty, pEnt:t.pEnt, pSal:t.pSal, puntos:t.puntos, com:t.com,
-      bruto:t.bruto, neto:t.neto, abierta:!!t.abierta })) };
+      bruto:t.bruto, neto:t.neto, abierta:!!t.abierta, org:t.org })) };
 }
 
 // Operaciones que llegaron del cofre y que este equipo no genera por si mismo
 // (el Mac no tiene puente: todo lo suyo viene de aqui).
 let opsRemotas = {};
+
+// Una operacion guardada lleva la hora metida dentro. Si despues cambias la
+// correccion de MetaTrader, hay que moverla. Solo se mueven las que se
+// guardaron con un sello distinto al actual: las que no lo traen se dejan
+// como estan, porque no hay forma de saber si ya venian corregidas.
+function normalizarRemota(o){
+  if (!o || !Number.isFinite(Number(o.off))) return o;
+  const soloMt5 = o.origen === "mt5" && (o.cuentas || []).every(esMT5);
+  if (!soloMt5) return o;
+  const delta = ((Number(cfg.offMin) || 0) - Number(o.off)) * 60000;
+  if (!delta) return o;
+  const n = Object.assign({}, o);
+  n.t0  = o.t0 + delta;
+  n.t1  = o.t1 + delta;
+  n.off = Number(cfg.offMin) || 0;
+  n.id  = n.origen + "|" + n.simbolo + "|" + n.dir + "|" + new Date(n.t0).toISOString();
+  if (meta[o.id] && !meta[n.id]) meta[n.id] = meta[o.id];   // no pierdas la nota
+  return n;
+}
 
 function fusionar(remoto){
   if (!remoto) return false;
@@ -541,7 +567,8 @@ function fusionar(remoto){
 
   if (remoto.ops){
     for (const id of Object.keys(remoto.ops)){
-      if (!opsRemotas[id]){ opsRemotas[id] = remoto.ops[id]; cambio = true; }
+      const o = normalizarRemota(remoto.ops[id]);
+      if (!opsRemotas[o.id]){ opsRemotas[o.id] = o; cambio = true; }
     }
   }
   // El emparejamiento mas reciente gana, venga del equipo que venga.
@@ -1935,6 +1962,27 @@ el("bCfg").onclick = () => {
   el("cPuntos").value=cfg.puntos; el("cOff").value=cfg.offMin; dlg.showModal();
 };
 el("bCerrar").onclick = () => dlg.close();
+el("bVaciar").onclick = async () => {
+  const n = Object.keys(opsRemotas).length;
+  if (!confirm("Se van a borrar " + n + " operaciones guardadas, en todos los dispositivos.\n\n"
+    + "Tu journal NO se toca. Despues vuelve a importar el CSV.\n\n¿Seguir?")) return;
+  const b = el("bVaciar");
+  b.disabled = true; b.textContent = "Vaciando…";
+  opsRemotas = {}; ops = []; fills = []; ultSeq = 0;
+  meta = {}; metaSucia = {};
+  try { localStorage.removeItem("receptor.meta"); } catch(e){}
+  seleccion.clear();
+  try {
+    await cofreEscribir({ v:1, ts:Date.now(), ops:{}, meta:{},
+      mapas:{ cuentas:cfg.mapCuentas, activos:cfg.mapActivos, ts:cfg.mapasTs } });
+    b.textContent = "Historial vaciado";
+  } catch(e){
+    b.disabled = false;
+    b.textContent = "No se pudo vaciar: " + (e.message || "error");
+    return;
+  }
+  construir(); refrescar(); refrescarBotones();
+};
 el("bGuardar").onclick = () => {
   cfg.bridge = el("cBridge").value.trim().replace(/\/+$/,"") || "http://127.0.0.1:8787";
   cfg.token  = el("cToken").value.trim();
