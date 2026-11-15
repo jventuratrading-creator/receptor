@@ -148,6 +148,20 @@
   .fld label{display:block;font-size:12px;color:var(--dim);margin-bottom:5px}
   .fld input{width:100%}
   .hint{font-size:12px;color:var(--dim);margin-top:5px}
+  .prev{max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:4px}
+  .pop{border-bottom:1px solid var(--line2);padding:9px 10px}
+  .pop:last-child{border-bottom:0}
+  .pop-h{display:flex;align-items:center;gap:9px;flex-wrap:wrap;font-size:13px}
+  .pop-h .hh{color:var(--dim);font-size:12px}
+  .pop-c{margin-top:6px;display:grid;grid-template-columns:1fr auto;gap:2px 14px;
+    font-size:12px;padding-left:8px;border-left:2px solid var(--line)}
+  .pop-c span:nth-child(odd){color:var(--dim)}
+  .resumen{display:flex;gap:22px;flex-wrap:wrap;background:var(--panel2);
+    border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin-bottom:14px}
+  .resumen b{display:block;font-size:10.5px;letter-spacing:.5px;text-transform:uppercase;
+    color:var(--dim);font-weight:600}
+  .resumen span{font-size:17px;font-weight:600}
+  @media (max-width:760px){ .prev{max-height:40vh} .resumen{gap:14px} .resumen span{font-size:15px} }
   .warnbox{background:rgba(210,153,34,.1);border:1px solid var(--warn);
     border-radius:6px;padding:10px 12px;font-size:12.5px;margin-bottom:16px}
 </style>
@@ -183,8 +197,8 @@
       <span class="lbl">Origen:</span>
       <span id="origenes"></span>
       <span class="sep"></span>
-      <label class="lbl">Réplica</label>
-      <input type="number" id="tol" value="5" min="0" max="300" style="width:54px"><span class="lbl">s</span>
+      <label class="lbl" title="Dos entradas del mismo símbolo y dirección dentro de este margen, con las posiciones solapadas, cuentan como una sola operación replicada">Margen réplica</label>
+      <input type="number" id="tol" value="3" min="0" max="120" step="0.5" style="width:58px"><span class="lbl">min</span>
     </div>
 
     <div class="fila">
@@ -257,8 +271,8 @@
     </div>
   </div>
   <div class="dlg-f">
-    <button class="primary" id="bJCerrar">Cerrar</button>
-    <button id="bJVolcar" style="display:none">Volcar</button>
+    <button id="bJCerrar">Cancelar</button>
+    <button class="primary" id="bJVolcar" disabled>Volcar</button>
   </div>
 </dialog>
 
@@ -368,7 +382,10 @@ const cfg = (function(){
     mapCuentas: g.mapCuentas || {},
     mapActivos: g.mapActivos || {},
     mapasTs   : g.mapasTs || 0,
-    tol    : Number.isFinite(g.tol) ? g.tol : 5,
+    // Margen de replica EN MINUTOS: a veces entras con otro grupo de cuentas
+    // unos minutos despues y sigue siendo la misma operacion.
+    tolMin : Number.isFinite(g.tolMin) ? g.tolMin
+             : (Number.isFinite(g.tol) ? Math.max(3, g.tol / 60) : 3),
     rango  : g.rango || "todo",
     desde  : g.desde || "", hasta: g.hasta || "",
     // Por defecto solo NinjaTrader. MetaTrader y los fills de prueba del panel,
@@ -699,7 +716,7 @@ function construir(){
     if (cur && pos !== 0){ cur.abierta = true; cerrar(cur, pts); trades.push(cur); }
   }
 
-  const tol = (cfg.tol||0) * 1000;
+  const tol = (cfg.tolMin || 0) * 60000;
   trades.sort((a,b)=> a.t0 - b.t0);
   const grupos = [];
   for (const t of trades){
@@ -707,8 +724,15 @@ function construir(){
     for (let i = grupos.length-1; i >= 0; i--){
       const c = grupos[i];
       if (t.t0 - c.t0 > tol + 60000) break;
-      if (c.simbolo === t.simbolo && c.dir === t.dir && c.origen === t.origen
-          && Math.abs(c.t0 - t.t0) <= tol){ g = c; break; }
+      if (c.simbolo !== t.simbolo || c.dir !== t.dir || c.origen !== t.origen) continue;
+      // Entradas dentro del margen...
+      if (Math.abs(c.t0 - t.t0) > tol) continue;
+      // ...y que las dos posiciones hayan estado abiertas a la vez. Si una
+      // cerro antes de que la otra abriera, son operaciones distintas.
+      if (t.t0 > c.t1 || c.t0 > t.t1) continue;
+      // Una misma cuenta no puede aparecer dos veces en la misma operacion.
+      if (c.cuentas.some(x => x.cuenta === t.cuenta)) continue;
+      g = c; break;
     }
     if (!g){ g = { simbolo:t.simbolo, dir:t.dir, origen:t.origen, t0:t.t0, t1:t.t1, cuentas:[] };
              grupos.push(g); }
@@ -740,8 +764,10 @@ function construir(){
     grupos.push(Object.assign({}, r, { cuentas: r.cuentas || [] }));
   }
 
-  grupos.sort((a,b)=> b.t0 - a.t0);
-  ops = grupos;
+  // Segunda pasada: fusiona operaciones que en realidad son la misma, aunque
+  // hayan entrado con minutos de diferencia (otro grupo de cuentas). Tambien
+  // se aplica a lo que llega ya agrupado desde un CSV o desde el cofre.
+  ops = fusionarGrupos(grupos);
 }
 
 // Resultado representativo de UNA cuenta. Mediana: no la descuadra que una
@@ -750,6 +776,57 @@ function mediana(a){
   const x = a.slice().sort((p,q)=> p-q), n = x.length;
   if (!n) return 0;
   return n % 2 ? x[(n-1)/2] : (x[n/2-1] + x[n/2]) / 2;
+}
+
+// Une en una sola operacion los grupos del mismo simbolo y direccion cuyas
+// entradas caen dentro del margen, que estuvieron abiertos a la vez y que no
+// repiten cuenta.
+function fusionarGrupos(lista){
+  const tol = (cfg.tolMin || 0) * 60000;
+  if (!tol) return lista.slice().sort((a,b)=> b.t0 - a.t0);
+
+  const orden = lista.slice().sort((a,b)=> a.t0 - b.t0);
+  const fuera = [];
+
+  for (const o of orden){
+    let destino = null;
+    for (let i = fuera.length - 1; i >= 0; i--){
+      const c = fuera[i];
+      if (o.t0 - c.t0 > tol + 60000) break;
+      if (c.simbolo !== o.simbolo || c.dir !== o.dir || c.origen !== o.origen) continue;
+      if (Math.abs(c.t0 - o.t0) > tol) continue;
+      if (o.t0 > c.t1 || c.t0 > o.t1) continue;          // no coincidieron abiertas
+      const repes = o.cuentas.some(x => c.cuentas.some(y => y.cuenta === x.cuenta));
+      if (repes) continue;                                // misma cuenta dos veces: no
+      destino = c; break;
+    }
+
+    if (!destino){ fuera.push(Object.assign({}, o, { cuentas: o.cuentas.slice() })); continue; }
+
+    destino.cuentas = destino.cuentas.concat(o.cuentas);
+    destino.t0 = Math.min(destino.t0, o.t0);
+    destino.t1 = Math.max(destino.t1, o.t1);
+    destino.abierta = destino.abierta || o.abierta;
+    recalcular(destino);
+  }
+
+  for (const o of fuera) recalcular(o);
+  return fuera.sort((a,b)=> b.t0 - a.t0);
+}
+
+function recalcular(g){
+  g.qty   = g.cuentas.reduce((s,t)=> s + (t.qty||0), 0);
+  g.bruto = g.cuentas.reduce((s,t)=> s + (t.bruto||0), 0);
+  g.com   = g.cuentas.reduce((s,t)=> s + (t.com||0), 0);
+  g.neto  = g.cuentas.reduce((s,t)=> s + (t.neto||0), 0);
+  const pe = g.cuentas.reduce((s,t)=> s + (t.pEnt||0)*(t.qty||0), 0);
+  const ps = g.cuentas.reduce((s,t)=> s + (t.pSal||0)*(t.qty||0), 0);
+  g.pEnt = g.qty ? pe/g.qty : g.pEnt;
+  g.pSal = g.qty ? ps/g.qty : g.pSal;
+  g.porCuenta = mediana(g.cuentas.map(t=> t.neto || 0));
+  // El identificador se ancla a la entrada mas temprana, para que no cambie
+  // al reagrupar y no se vuelva a volcar lo ya enviado.
+  g.id = g.origen + "|" + g.simbolo + "|" + g.dir + "|" + new Date(g.t0).toISOString();
 }
 
 function cerrar(t, pts){
@@ -1133,7 +1210,7 @@ el("fDesde").onchange = e => { cfg.desde = e.target.value; guardarCfg(); refresc
 el("fHasta").onchange = e => { cfg.hasta = e.target.value; guardarCfg(); refrescar(); };
 el("bLimpiar").onclick = () => { cfg.desde=""; cfg.hasta="";
   el("fDesde").value=""; el("fHasta").value=""; guardarCfg(); refrescar(); };
-el("tol").onchange = e => { cfg.tol = Math.max(0, Number(e.target.value)||0);
+el("tol").onchange = e => { cfg.tolMin = Math.max(0, Number(e.target.value)||0);
   guardarCfg(); construir(); refrescar(); };
 el("trAuto").onclick = () => {
   cfg.auto = !cfg.auto;
@@ -1347,7 +1424,7 @@ function duracion(a,b){
 async function jAbrir(){
   jPend = seleccionadas();
   el("jCuerpo").style.display = "none";
-  el("bJVolcar").style.display = "none";
+  el("bJVolcar").disabled = true;
   dlgJournal.showModal();
 
   if (!cofreListo()){
@@ -1360,28 +1437,65 @@ async function jAbrir(){
     return;
   }
 
-  el("jEstado").textContent = "Volcando " + jPend.length + " operaciones…";
-  const r = await volcarAlJournal(jPend, false);
-
-  if (r.error){
-    el("jEstado").innerHTML = '<span style="color:var(--bad)">Falló: ' + esc(r.error) + "</span>";
-    return;
+  el("jEstado").textContent = "Leyendo tu journal…";
+  try {
+    const d = await cofreLlamar("panel_get", { p_box: cfg.box }, 12000);
+    const S = (d && typeof d === "object" && !Array.isArray(d)) ? d : null;
+    if (!S) throw new Error("tu journal está vacío o el secreto no coincide");
+    _listasJ = listasDelJournal(S);
+    const yaEstan = (S.trades || []);
+    jVistaPrevia(yaEstan);
+  } catch(e){
+    el("jEstado").innerHTML = '<span style="color:var(--bad)">No pude leer el journal: '
+      + esc(e.message) + "</span>";
   }
+}
 
-  // Informativo: a donde ha ido cada cosa. No hay nada que confirmar.
-  const filas = Object.keys(r.usadas || {}).sort().map(k =>
-    '<div style="display:flex;gap:10px;align-items:center;margin-bottom:4px">'
-    + '<span class="num" style="min-width:190px;font-size:12.5px;color:var(--dim)">'
-    + esc(k.replace(/^· /, "")) + '</span><span style="color:var(--dim)">→</span>'
-    + '<span style="font-size:12.5px">' + esc(r.usadas[k]) + "</span></div>").join("");
+function jVistaPrevia(tradesJournal){
+  const repes = jPend.filter(o => tradesJournal.some(t => t.recOpId === o.id));
+  const iran  = jPend.filter(o => !repes.includes(o));
 
-  el("jEstado").innerHTML =
-    "<b>" + r.puestas + "</b> operaciones volcadas a tu journal."
-    + (jPend.length - r.puestas ? '<br><span style="color:var(--warn)">'
-        + (jPend.length - r.puestas) + " ya estaban y se han saltado.</span>" : "")
-    + "<br><br>Ábrelo y dale a sincronizar para verlas."
-    + (filas ? '<div style="margin-top:16px"><div style="font-size:12px;color:var(--dim);'
-        + 'margin-bottom:7px">CUENTAS Y ACTIVOS USADOS</div>' + filas + "</div>" : "");
+  const total   = iran.reduce((s,o)=> s + o.neto, 0);
+  const cuentas = new Set();
+  iran.forEach(o => o.cuentas.forEach(c => cuentas.add(c.cuenta)));
+
+  let html = '<div class="resumen">'
+    + '<div><b>Operaciones</b><span class="num">' + iran.length + "</span></div>"
+    + '<div><b>Líneas por cuenta</b><span class="num">'
+      + iran.reduce((s,o)=> s + o.cuentas.length, 0) + "</span></div>"
+    + '<div><b>Cuentas distintas</b><span class="num">' + cuentas.size + "</span></div>"
+    + '<div><b>Resultado total</b><span class="num">' + dinero(total) + "</span></div>"
+    + "</div>";
+
+  if (repes.length)
+    html += '<div class="warnbox">' + repes.length
+      + " de las marcadas ya estaban en tu journal. Esas se saltan.</div>";
+
+  html += '<div class="prev">';
+  for (const o of iran.slice().sort((a,b)=> b.t0 - a.t0)){
+    const nom = o.cuentas.map(c => resolverCuenta(c.cuenta, o.origen, _listasJ.cuentas));
+    html += '<div class="pop"><div class="pop-h">'
+      + '<span class="hh num">' + iso(o.t0).slice(8,10) + "/" + iso(o.t0).slice(5,7)
+      + " " + hhmmss(o.t0) + "</span>"
+      + "<b>" + esc(resolverActivo(o.simbolo,
+            (o.cuentas[0] && o.cuentas[0].contrato) || o.simbolo, _listasJ.activos)) + "</b>"
+      + '<span class="' + (o.dir==="Long"?"long":"short") + '">'
+      + (o.dir==="Long" ? "LARGO" : "CORTO") + "</span>"
+      + '<span class="tag">' + o.cuentas.length + " réplicas</span>"
+      + '<span style="margin-left:auto" class="num"><b>' + dinero(o.neto) + "</b></span>"
+      + "</div><div class=\"pop-c\">";
+    o.cuentas.forEach((c, k) => {
+      html += "<span>" + esc(nom[k]) + "</span>"
+            + '<span class="num">' + dinero(c.neto) + "</span>";
+    });
+    html += "</div></div>";
+  }
+  html += "</div>";
+
+  el("jEstado").innerHTML = html;
+  el("bJVolcar").disabled = iran.length === 0;
+  el("bJVolcar").textContent = "Volcar " + iran.length + " operaciones";
+  jPend = iran;
 }
 
 
@@ -1557,15 +1671,25 @@ function aTrade(o){
 
 async function jVolcar(){
   el("bJVolcar").disabled = true;
-  el("jEstado").textContent = "Volcando…";
+  el("bJCerrar").textContent = "Cerrar";
+  el("jEstado").innerHTML = "Volcando " + jPend.length + " operaciones…";
   const r = await volcarAlJournal(jPend, false);
   if (r.error){
     el("jEstado").innerHTML = '<span style="color:var(--bad)">Falló: ' + esc(r.error) + "</span>";
     el("bJVolcar").disabled = false;
     return;
   }
-  el("jEstado").innerHTML = "<b>Listo.</b> " + r.puestas + " operaciones en tu journal."
-    + "<br>Ábrelo y dale a sincronizar para verlas.";
+  const filas = Object.keys(r.usadas || {}).sort().map(k =>
+    '<div style="display:flex;gap:10px;align-items:center;margin-bottom:4px">'
+    + '<span class="num" style="min-width:190px;font-size:12.5px;color:var(--dim)">'
+    + esc(k.replace(/^· /, "")) + '</span><span style="color:var(--dim)">→</span>'
+    + '<span style="font-size:12.5px">' + esc(r.usadas[k]) + "</span></div>").join("");
+  el("jEstado").innerHTML =
+    "<b>" + r.puestas + "</b> operaciones volcadas a tu journal."
+    + "<br><br>Ábrelo y dale a sincronizar para verlas."
+    + (filas ? '<div style="margin-top:16px"><div style="font-size:12px;color:var(--dim);'
+        + 'margin-bottom:7px">CUENTAS Y ACTIVOS USADOS</div>' + filas + "</div>" : "");
+  el("bJVolcar").style.display = "none";
 }
 
 el("bJCerrar").onclick = () => dlgJournal.close();
@@ -1705,7 +1829,7 @@ el("bGuardar").onclick = () => {
   construir(); refrescar(); refrescarEstado(); traerFills(true).then(refrescar);
 };
 
-el("tol").value = cfg.tol;
+el("tol").value = cfg.tolMin;
 el("fDesde").value = cfg.desde;
 el("fHasta").value = cfg.hasta;
 pintarAuto();
