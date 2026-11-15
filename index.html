@@ -16,9 +16,37 @@
   .num{font-family:"Cascadia Mono",Consolas,monospace;font-variant-numeric:tabular-nums}
 
   header{position:sticky;top:0;z-index:30;background:var(--panel);
-    border-bottom:1px solid var(--line);padding:10px 16px}
+    border-bottom:1px solid var(--line);padding:9px 14px}
+  .fila{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .fila+.fila{margin-top:7px}
+  .fila.principal{margin-bottom:8px}
   .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .row+.row{margin-top:9px}
+  .solo-movil{display:none}
+
+  @media (max-width:760px){
+    header{padding:7px 10px}
+    h1{font-size:14px}
+    .solo-movil{display:inline-flex}
+    .op-pc{display:none}
+    .pills{margin-left:8px;gap:5px}
+    .pill{padding:3px 9px;font-size:11.5px}
+    /* En el movil los filtros se despliegan solo si los pides. */
+    #panelFiltros{display:none}
+    #panelFiltros.abierto{display:block}
+    main{padding:0 8px 30px}
+    .totales{gap:14px;padding:9px 12px;margin:10px 0}
+    .tot b{font-size:10px}
+    .tot span{font-size:16px}
+    /* La tabla se desplaza en horizontal en vez de aplastarse. */
+    .envoltorio{overflow-x:auto;-webkit-overflow-scrolling:touch}
+    table{min-width:720px}
+    thead th{font-size:10px;padding:7px 7px}
+    tbody td{padding:7px 7px;font-size:12.5px}
+    .inner table{min-width:560px}
+    dialog{width:96vw}
+    .dlg-b{padding:14px}
+  }
   h1{font-size:15px;margin:0;font-weight:600;letter-spacing:.3px}
   .pills{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
   .pill{display:flex;align-items:center;gap:7px;background:var(--panel2);
@@ -115,45 +143,54 @@
 <body>
 
 <header>
-  <div class="row">
-    <h1>Bandeja <span style="color:var(--dim);font-weight:400">· operaciones antes del journal</span></h1>
-    <div class="pills">
-      <span class="pill"><span class="dot" id="dPuente"></span><span id="tPuente">Puente…</span></span>
-      <span class="pill"><span class="dot" id="dNt8"></span><span id="tNt8">NinjaTrader…</span></span>
-      <span class="pill"><span class="dot" id="dUlt"></span><span id="tUlt">Sin operaciones</span></span>
+  <div class="fila principal">
+    <h1>Bandeja</h1>
+    <div class="pills" id="pills">
       <span class="pill"><span class="dot" id="dCofre"></span><span id="tCofre">Cofre…</span></span>
+      <span class="pill op-pc"><span class="dot" id="dPuente"></span><span id="tPuente">Puente…</span></span>
+      <span class="pill op-pc"><span class="dot" id="dNt8"></span><span id="tNt8">NinjaTrader…</span></span>
+      <span class="pill op-pc"><span class="dot" id="dUlt"></span><span id="tUlt">Sin operaciones</span></span>
     </div>
+    <button class="chip solo-movil" id="bMenu">Filtros ▾</button>
   </div>
 
-  <div class="row">
-    <button class="chip" data-rango="hoy">Hoy</button>
-    <button class="chip" data-rango="ayer">Ayer</button>
-    <button class="chip" data-rango="7">7 días</button>
-    <button class="chip" data-rango="30">30 días</button>
-    <button class="chip" data-rango="todo">Todo</button>
-    <span class="sep"></span>
-    <label class="lbl">Desde</label><input type="date" id="fDesde">
-    <label class="lbl">Hasta</label><input type="date" id="fHasta">
-    <button id="bLimpiar">Limpiar fechas</button>
-    <span class="sep"></span>
-    <label class="lbl">Margen réplica</label>
-    <input type="number" id="tol" value="5" min="0" max="300" style="width:58px"><span class="lbl">s</span>
-  </div>
-
-  <div class="row">
-    <span class="lbl">Origen:</span>
-    <span id="origenes"></span>
-    <span class="spacer"></span>
-    <div class="sw">Envío automático
-      <span class="track" id="trAuto"><span class="knob"></span></span>
-      <span id="tAuto" style="color:var(--dim)">off</span>
+  <div id="panelFiltros">
+    <div class="fila">
+      <button class="chip" data-rango="hoy">Hoy</button>
+      <button class="chip" data-rango="ayer">Ayer</button>
+      <button class="chip" data-rango="7">7 días</button>
+      <button class="chip" data-rango="30">30 días</button>
+      <button class="chip" data-rango="todo">Todo</button>
+      <span class="sep"></span>
+      <label class="lbl">Del</label><input type="date" id="fDesde">
+      <label class="lbl">al</label><input type="date" id="fHasta">
+      <button id="bLimpiar">Limpiar</button>
     </div>
-    <button id="bEnviar" disabled>Volcar al journal</button>
-    <button id="bJson">JSON</button>
-    <button id="bCsv">CSV</button>
-    <button id="bHist">Importar historial NT8</button>
-    <button id="bRecargar">Recargar</button>
-    <button id="bCfg">Ajustes</button>
+
+    <div class="fila">
+      <span class="lbl">Origen:</span>
+      <span id="origenes"></span>
+      <span class="sep"></span>
+      <label class="lbl">Réplica</label>
+      <input type="number" id="tol" value="5" min="0" max="300" style="width:54px"><span class="lbl">s</span>
+    </div>
+
+    <div class="fila">
+      <div class="sw" id="swAuto" title="Solo afecta a las operaciones que lleguen DESPUÉS de activarlo">
+        Envío automático
+        <span class="track" id="trAuto"><span class="knob"></span></span>
+        <span id="tAuto" style="color:var(--dim)">off</span>
+      </div>
+      <button class="primary" id="bEnviar" disabled>Volcar al journal</button>
+      <span class="sep"></span>
+      <button id="bHist" class="op-pc">Historial NT8</button>
+      <button id="bFichero">Importar fichero</button>
+      <input type="file" id="ficheroIn" accept=".csv,.json,text/csv,application/json" style="display:none">
+      <button id="bJson">JSON</button>
+      <button id="bCsv">CSV</button>
+      <button id="bRecargar">Recargar</button>
+      <button id="bCfg">Ajustes</button>
+    </div>
   </div>
 </header>
 
@@ -169,6 +206,7 @@
   </div>
 
   <div id="vacio" class="empty"><span id="vacioTxt">Sin operaciones en este rango.</span></div>
+  <div class="envoltorio">
   <table id="tabla" style="display:none">
     <thead><tr>
       <th style="width:30px"><input type="checkbox" id="selTodo" title="Seleccionar todas las pendientes"></th>
@@ -184,6 +222,7 @@
     </tr></thead>
     <tbody id="cuerpo"></tbody>
   </table>
+  </div>
 </main>
 
 <dialog id="dlgJournal">
@@ -309,6 +348,9 @@ const cfg = (function(){
     sbUrl  : g.sbUrl  || "", sbKey: g.sbKey || "", box: g.box || "",
     puntos : g.puntos || PUNTOS_DEF,
     auto   : !!g.auto,
+    // Momento en que se encendio el automatico. Solo se envian solas las
+    // operaciones vistas DESPUES de ese instante.
+    autoDesde : g.autoDesde || 0,
     tol    : Number.isFinite(g.tol) ? g.tol : 5,
     rango  : g.rango || "todo",
     desde  : g.desde || "", hasta: g.hasta || "",
@@ -360,8 +402,15 @@ async function cargarMetaDelPuente(){
 }
 
 function metaDe(id){
-  if (!meta[id]) meta[id] = { nota:"", etiqueta:"", enviada:false, ts:0 };
+  if (!meta[id]) meta[id] = { nota:"", etiqueta:"", enviada:false, ts:0, visto:Date.now() };
+  if (!meta[id].visto) meta[id].visto = Date.now();
   return meta[id];
+}
+
+// Las que llegaron despues de encender el automatico.
+function posterioresAlAuto(){
+  if (!cfg.auto || !cfg.autoDesde) return [];
+  return pendientes().filter(o => (metaDe(o.id).visto || 0) >= cfg.autoDesde);
 }
 
 function mapaPuntos(){
@@ -553,7 +602,10 @@ async function traerFills(desdeCero){
     if (d && Array.isArray(d.fills) && d.fills.length){
       for (const r of d.fills){ fills.push(r.fill); if (r.seq > ultSeq) ultSeq = r.seq; }
       construir(); pintar();
-      if (cfg.auto) enviarPendientes(true);
+      if (cfg.auto){
+        const nuevas = posterioresAlAuto();
+        if (nuevas.length) volcarAlJournal(nuevas, true);
+      }
     } else if (desdeCero){ construir(); pintar(); }
   } catch(e){}
 }
@@ -941,22 +993,39 @@ function aFila(o){
   };
 }
 
-async function enviarPendientes(silencioso, lista){
+// Nucleo del volcado: lo usan el boton y el envio automatico.
+async function volcarAlJournal(lista, silencioso){
   if (!cofreListo()){
-    if (!silencioso) alert("Primero configura el cofre en Ajustes.");
-    return;
+    if (!silencioso) alert("Configura antes el cofre en Ajustes.");
+    return { puestas:0, error:"sin cofre" };
   }
-  // Sin lista explicita (modo automatico) van todas las pendientes.
-  const pend = lista || pendientes();
-  if (!pend.length) return;
-  // De momento marcamos como enviadas y lo subimos al cofre. El volcado al
-  // journal de verdad se cablea en el siguiente paso.
-  for (const o of pend){ metaDe(o.id).enviada = true; seleccion.delete(o.id); guardarMeta(o.id); }
-  pintar(); refrescarBotones(); pintarSelTodo();
-  await cofreCiclo(true);
-  if (!silencioso) alert("Marcadas " + pend.length + " operaciones como enviadas.\n\n"
-    + "Ya están en el cofre y las verás igual desde el Mac.\n"
-    + "El volcado automático a tu journal es el siguiente paso.");
+  const pend = (lista || []).filter(o => !o.abierta && !metaDe(o.id).enviada);
+  if (!pend.length) return { puestas:0 };
+
+  try {
+    const d = await cofreLlamar("panel_get", { p_box: cfg.box }, 12000);
+    const S = (d && typeof d === "object" && !Array.isArray(d)) ? d : null;
+    if (!S) throw new Error("no pude leer tu journal");
+    S.trades = S.trades || [];
+
+    let puestas = 0;
+    for (const o of pend){
+      if (S.trades.some(t => t.recOpId === o.id)) continue;
+      S.trades.unshift(aTrade(o));
+      puestas++;
+    }
+    if (puestas){
+      S._syncTs = Math.max(Date.now(), (S._syncTs || 0) + 1);
+      await cofreLlamar("panel_set", { p_box: cfg.box, p_data: S }, 20000);
+    }
+    for (const o of pend){ metaDe(o.id).enviada = true; seleccion.delete(o.id); guardarMeta(o.id); }
+    await cofreCiclo(true);
+    pintar(); refrescarBotones(); pintarSelTodo();
+    return { puestas: puestas };
+  } catch(e){
+    if (!silencioso) alert("No se pudo volcar: " + e.message);
+    return { puestas:0, error:(e && e.message) || "error" };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1014,6 +1083,10 @@ function pintarAuto(){
   el("trAuto").className = "track" + (cfg.auto ? " on" : "");
   el("tAuto").textContent = cfg.auto ? "on" : "off";
   el("tAuto").style.color = cfg.auto ? "var(--ok)" : "var(--dim)";
+  el("swAuto").title = cfg.auto
+    ? "Encendido a las " + new Date(cfg.autoDesde).toLocaleString("es-ES") +
+      ". Solo se envían solas las operaciones recibidas a partir de ese momento."
+    : "Solo afecta a las operaciones que lleguen DESPUÉS de activarlo";
 }
 function refrescar(){ pintar(); pintarOrigenes(); pintarChips(); refrescarBotones(); pintarSelTodo(); }
 
@@ -1028,19 +1101,181 @@ el("bLimpiar").onclick = () => { cfg.desde=""; cfg.hasta="";
   el("fDesde").value=""; el("fHasta").value=""; guardarCfg(); refrescar(); };
 el("tol").onchange = e => { cfg.tol = Math.max(0, Number(e.target.value)||0);
   guardarCfg(); construir(); refrescar(); };
-el("trAuto").onclick = () => { cfg.auto = !cfg.auto; guardarCfg(); pintarAuto();
-  if (cfg.auto) enviarPendientes(false); };
+el("trAuto").onclick = () => {
+  cfg.auto = !cfg.auto;
+  // Al encenderlo marcamos el instante: lo anterior NO se envia solo.
+  if (cfg.auto) cfg.autoDesde = Date.now();
+  guardarCfg(); pintarAuto(); refrescarBotones();
+};
 el("selTodo").onclick = e => {
   const pend = pendientes();
   if (e.target.checked) for (const o of pend) seleccion.add(o.id);
   else                  for (const o of pend) seleccion.delete(o.id);
   pintar(); refrescarBotones(); pintarSelTodo();
 };
+el("bFichero").onclick = () => el("ficheroIn").click();
+el("ficheroIn").onchange = async e => {
+  const f = e.target.files && e.target.files[0];
+  e.target.value = "";
+  if (!f) return;
+  try {
+    const r = await importarFichero(f);
+    alert("Leídas " + r.leidas + " operaciones del fichero.\n"
+        + r.nuevas + " eran nuevas y se han añadido.\n"
+        + (r.leidas - r.nuevas) + " ya estaban.");
+  } catch(err){
+    alert("No pude leer el fichero: " + err.message);
+  }
+};
+
+// En el móvil los filtros van plegados para que no coman pantalla.
+el("bMenu").onclick = () => {
+  const pf = el("panelFiltros");
+  pf.classList.toggle("abierto");
+  el("bMenu").textContent = pf.classList.contains("abierto") ? "Filtros ▴" : "Filtros ▾";
+};
+
 el("bRecargar").onclick = () => traerFills(true).then(refrescar);
 el("bEnviar").onclick = jAbrir;
 el("bCsv").onclick = csv;
 el("bJson").onclick = () =>
   bajar("operaciones_" + sello() + ".json", JSON.stringify(visibles().map(aFila), null, 2), "application/json");
+
+// ---------------------------------------------------------------------------
+// Importar un fichero CSV o JSON generado por la propia Bandeja.
+// Sirve para meter el historico en un equipo que no tiene puente (el Mac).
+// ---------------------------------------------------------------------------
+function partirCSV(linea, sep){
+  const out = []; let act = "", dentro = false;
+  for (let i = 0; i < linea.length; i++){
+    const c = linea[i];
+    if (c === '"'){
+      if (dentro && linea[i+1] === '"'){ act += '"'; i++; }
+      else dentro = !dentro;
+    } else if (c === sep && !dentro){ out.push(act); act = ""; }
+    else act += c;
+  }
+  out.push(act);
+  return out;
+}
+
+function fechaHoraMs(fecha, hora){
+  const f = String(fecha||"").trim(), h = String(hora||"").trim() || "00:00:00";
+  const t = Date.parse(f + "T" + h);
+  return Number.isFinite(t) ? t : 0;
+}
+
+function num(v){
+  const n = parseFloat(String(v||"").replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function opsDesdeCSV(texto){
+  const lineas = texto.split(/\r?\n/).filter(l => l.trim().length);
+  if (!lineas.length) return [];
+  const sep = (lineas[0].split(";").length > lineas[0].split(",").length) ? ";" : ",";
+  const cab = partirCSV(lineas[0], sep).map(x => x.trim().toLowerCase());
+  const col = n => cab.indexOf(n);
+
+  const iFecha = col("fecha"), iEnt = col("hora_entrada"), iSal = col("hora_salida");
+  if (iFecha < 0 || iEnt < 0) throw new Error("no reconozco las columnas: falta fecha u hora_entrada");
+
+  const iSim = col("simbolo"), iDir = col("direccion"), iOrg = col("origen"),
+        iQty = col("cantidad"), iPe = col("precio_entrada"), iPs = col("precio_salida"),
+        iCom = col("comision"), iNc = col("num_cuentas"), iCtas = col("cuentas"),
+        iEtq = col("etiqueta"), iNota = col("nota");
+  // Las versiones viejas traian bruto/neto; la nueva, por_cuenta/total.
+  // Ojo: el "bruto" antiguo era el TOTAL, no el resultado por cuenta. Si no
+  // viene la columna nueva, el valor por cuenta se saca de las propias cuentas.
+  const iTotal = col("total") >= 0 ? col("total") : col("neto");
+  const iPorC  = col("por_cuenta");
+
+  const fuera = [];
+  for (let i = 1; i < lineas.length; i++){
+    const c = partirCSV(lineas[i], sep).map(x => x.trim());
+    const t0 = fechaHoraMs(c[iFecha], c[iEnt]);
+    if (!t0) continue;
+    let t1 = iSal >= 0 ? fechaHoraMs(c[iFecha], c[iSal]) : t0;
+    if (t1 < t0) t1 += 86400000;          // cruzo la medianoche
+
+    const simbolo = c[iSim] || "?";
+    const dir     = /short|corto/i.test(c[iDir] || "") ? "Short" : "Long";
+    const origen  = (c[iOrg] || "csv").toLowerCase();
+    const qty     = num(c[iQty]);
+    const total   = iTotal >= 0 ? num(c[iTotal]) : 0;
+    const com     = iCom >= 0 ? num(c[iCom]) : 0;
+
+    // "CUENTA:123.45 | OTRA:-67.80"
+    const cuentas = [];
+    if (iCtas >= 0 && c[iCtas]){
+      for (const trozo of c[iCtas].split("|")){
+        const k = trozo.lastIndexOf(":");
+        if (k < 0) continue;
+        const nom = trozo.slice(0, k).trim();
+        const val = num(trozo.slice(k + 1));
+        if (!nom) continue;
+        cuentas.push({ cuenta:nom, nombre:nom, contrato:simbolo,
+          qty: 0, pEnt:num(c[iPe]), pSal:num(c[iPs]), puntos:0,
+          com:0, bruto:val, neto:val, abierta:false });
+      }
+    }
+    const n = cuentas.length || Math.max(1, parseInt(c[iNc], 10) || 1);
+    for (const x of cuentas) x.qty = Number((qty / n).toFixed(4));
+    if (!cuentas.length)
+      cuentas.push({ cuenta:"(sin detalle)", nombre:"(sin detalle)", contrato:simbolo,
+        qty:qty, pEnt:num(c[iPe]), pSal:num(c[iPs]), puntos:0,
+        com:com, bruto:total, neto:total, abierta:false });
+
+    const o = {
+      id: origen + "|" + simbolo + "|" + dir + "|" + new Date(t0).toISOString(),
+      t0:t0, t1:t1, simbolo:simbolo, dir:dir, origen:origen,
+      qty:qty, pEnt:num(c[iPe]), pSal:num(c[iPs]),
+      bruto:total - com, com:com, neto:total,
+      porCuenta: iPorC >= 0 ? num(c[iPorC]) : mediana(cuentas.map(x => x.neto)),
+      abierta:false, cuentas:cuentas
+    };
+    fuera.push(o);
+
+    if (iEtq >= 0 || iNota >= 0){
+      const m = metaDe(o.id);
+      if (iEtq >= 0 && c[iEtq] && !m.etiqueta) m.etiqueta = c[iEtq];
+      if (iNota >= 0 && c[iNota] && !m.nota)   m.nota = c[iNota];
+    }
+  }
+  return fuera;
+}
+
+function opsDesdeJSON(texto){
+  const d = JSON.parse(texto);
+  const lista = Array.isArray(d) ? d : (d.ops ? Object.values(d.ops) : []);
+  return lista.map(function(r){
+    if (r.id && r.t0) return r;                  // ya es formato interno
+    const t0 = Date.parse(r.fecha || r.t0) || 0; // formato de aFila()
+    const t1 = Date.parse(r.cierre || r.t1) || t0;
+    const cuentas = (r.cuentas || []).map(c => ({
+      cuenta:c.cuenta || c.nombre, nombre:c.nombre || c.cuenta, contrato:c.contrato || r.simbolo,
+      qty:c.cantidad || 0, pEnt:c.entrada || 0, pSal:c.salida || 0, puntos:0,
+      com:c.comision || 0, bruto:c.bruto || c.resultado || 0,
+      neto:c.resultado || 0, abierta:false }));
+    return { id: r.op_id || r.id, t0:t0, t1:t1, simbolo:r.simbolo,
+      dir:r.direccion || r.dir, origen:r.origen || "json",
+      qty:r.cantidad || r.qty || 0, pEnt:r.precio_entrada || 0, pSal:r.precio_salida || 0,
+      bruto:r.resultado_bruto || 0, com:r.comision || 0, neto:r.resultado || 0,
+      porCuenta:r.resultado_por_cuenta || 0, abierta:false, cuentas:cuentas };
+  }).filter(o => o.id && o.t0);
+}
+
+async function importarFichero(file){
+  const txt = await file.text();
+  const esJson = /\.json$/i.test(file.name) || txt.trim()[0] === "{" || txt.trim()[0] === "[";
+  const nuevas = esJson ? opsDesdeJSON(txt) : opsDesdeCSV(txt);
+  let puestas = 0;
+  for (const o of nuevas){
+    if (!opsRemotas[o.id]){ opsRemotas[o.id] = o; puestas++; }
+  }
+  if (puestas){ cofreSucio = true; guardarMeta(); construir(); refrescar(); await cofreCiclo(true); }
+  return { leidas:nuevas.length, nuevas:puestas };
+}
 
 // ---------------------------------------------------------------------------
 // Volcado al journal
@@ -1191,35 +1426,14 @@ function aTrade(o){
 async function jVolcar(){
   el("bJVolcar").disabled = true;
   el("jEstado").textContent = "Volcando…";
-  try {
-    // Releemos justo antes de escribir, por si el journal cambio mientras tanto.
-    const d = await cofreLlamar("panel_get", { p_box: cfg.box }, 12000);
-    const S = (d && typeof d === "object" && !Array.isArray(d)) ? d : null;
-    if (!S) throw new Error("no pude releer el journal");
-    S.trades = S.trades || [];
-
-    let puestas = 0;
-    for (const o of jPend){
-      if (S.trades.some(t => t.recOpId === o.id)) continue;
-      S.trades.unshift(aTrade(o));
-      puestas++;
-    }
-
-    if (puestas){
-      S._syncTs = Math.max(Date.now(), (S._syncTs || 0) + 1);
-      await cofreLlamar("panel_set", { p_box: cfg.box, p_data: S }, 20000);
-    }
-
-    for (const o of jPend){ metaDe(o.id).enviada = true; seleccion.delete(o.id); guardarMeta(o.id); }
-    await cofreCiclo(true);
-    pintar(); refrescarBotones(); pintarSelTodo();
-
-    el("jEstado").innerHTML = "<b>Listo.</b> " + puestas + " operaciones en tu journal."
-      + "<br>Ábrelo y dale a sincronizar para verlas.";
-  } catch(e){
-    el("jEstado").innerHTML = '<span style="color:var(--bad)">Falló: ' + esc(e.message) + "</span>";
+  const r = await volcarAlJournal(jPend, false);
+  if (r.error){
+    el("jEstado").innerHTML = '<span style="color:var(--bad)">Falló: ' + esc(r.error) + "</span>";
     el("bJVolcar").disabled = false;
+    return;
   }
+  el("jEstado").innerHTML = "<b>Listo.</b> " + r.puestas + " operaciones en tu journal."
+    + "<br>Ábrelo y dale a sincronizar para verlas.";
 }
 
 el("bJCerrar").onclick = () => dlgJournal.close();
