@@ -374,7 +374,7 @@
 </dialog>
 
 <script>
-const VER = "2.1";
+const VER = "2.2";
 "use strict";
 
 const PUNTOS_DEF = "ES=50,MES=5,NQ=20,MNQ=2,YM=5,MYM=0.5,RTY=50,M2K=5,"
@@ -1620,7 +1620,10 @@ function jVistaPrevia(tradesJournal){
       + '<span style="margin-left:auto" class="num"><b>' + dinero(o.neto) + "</b></span>"
       + "</div><div class=\"pop-c\">";
     o.cuentas.forEach((c, k) => {
-      html += "<span>" + esc(nom[k]) + "</span>"
+      html += "<span>" + esc(nom[k])
+            + (nom[k] !== c.cuenta
+               ? ' <span style="opacity:.45;font-size:11px">' + esc(c.cuenta) + "</span>" : "")
+            + "</span>"
             + '<span class="num">' + dinero(c.neto) + "</span>";
     });
     html += "</div></div>";
@@ -1683,8 +1686,19 @@ function cuentaMT5(cuentasJ){
 
 // Decide sola a que cuenta del journal va cada cuenta del broker.
 // Lo que hayas puesto a mano manda siempre.
+// Nombre del broker sin traducir: "Paper Trading 651876", "PAAPEX6115870000018".
+function esNombreCrudo(x){
+  const s = String(x || "");
+  return /^paper\s*trading/i.test(s) || /^(pa)?apex\d{5,}/i.test(s.replace(/[\s_\-.]/g,""));
+}
+
 function resolverCuenta(cuentaNT8, origen, cuentasJ){
-  if (cfg.mapCuentas[cuentaNT8]) return cfg.mapCuentas[cuentaNT8];
+  // Un emparejamiento guardado manda, pero solo si apunta a algo util: versiones
+  // viejas rellenaron solas emparejamientos del nombre del broker consigo mismo,
+  // y esos se quedaban pegados por encima de todo lo demas.
+  const man = cfg.mapCuentas[cuentaNT8];
+  if (man && man !== cuentaNT8 && !esNombreCrudo(man)) return man;
+  if (man) delete cfg.mapCuentas[cuentaNT8];
 
   const clave = claveCuenta(cuentaNT8);
   const porClave = cuentasJ.find(c => claveCuenta(c) === clave);
@@ -2058,6 +2072,17 @@ el("bGuardar").onclick = () => {
 };
 
 el("ver").textContent = "v" + VER;
+
+// Limpieza de los emparejamientos que se rellenaron solos y apuntaban al
+// nombre del broker. Se hace una vez y se sube al cofre para todos los equipos.
+(function limpiarMapas(){
+  let n = 0;
+  for (const k of Object.keys(cfg.mapCuentas)){
+    const v = cfg.mapCuentas[k];
+    if (v === k || esNombreCrudo(v)){ delete cfg.mapCuentas[k]; n++; }
+  }
+  if (n){ cfg.mapasTs = Date.now(); guardarCfg(); cofreSucio = true; }
+})();
 el("tol").value = cfg.tolMin;
 el("fDesde").value = cfg.desde;
 el("fHasta").value = cfg.hasta;
