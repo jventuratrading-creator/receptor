@@ -1,0 +1,1382 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bandeja de operaciones</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2430; --line:#2a3340; --line2:#1a212b;
+    --txt:#e6edf3; --dim:#8b949e; --accent:#58a6ff;
+    --ok:#3fb950; --warn:#d29922; --bad:#f85149;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font:14px/1.5 "Segoe UI",system-ui,sans-serif}
+  .num{font-family:"Cascadia Mono",Consolas,monospace;font-variant-numeric:tabular-nums}
+
+  header{position:sticky;top:0;z-index:30;background:var(--panel);
+    border-bottom:1px solid var(--line);padding:10px 16px}
+  .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .row+.row{margin-top:9px}
+  h1{font-size:15px;margin:0;font-weight:600;letter-spacing:.3px}
+  .pills{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
+  .pill{display:flex;align-items:center;gap:7px;background:var(--panel2);
+    border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:12.5px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--dim);flex:none}
+  .dot.ok{background:var(--ok);box-shadow:0 0 7px var(--ok)}
+  .dot.bad{background:var(--bad)}
+  .dot.warn{background:var(--warn)}
+
+  button,select,input[type=text],input[type=date],input[type=number]{
+    background:var(--panel2);color:var(--txt);border:1px solid var(--line);
+    border-radius:6px;padding:6px 10px;font-size:13px;font-family:inherit}
+  button{cursor:pointer}
+  button:hover:not(:disabled){border-color:var(--accent)}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  button.primary{background:#1f6feb;border-color:#1f6feb;color:#fff}
+  button.primary:hover:not(:disabled){background:#2a7aff}
+  button.chip{padding:5px 11px;font-size:12.5px}
+  button.chip.on{background:#1f6feb33;border-color:var(--accent);color:var(--accent)}
+  .sep{width:1px;height:22px;background:var(--line)}
+  .spacer{margin-left:auto}
+  label.lbl{font-size:12.5px;color:var(--dim)}
+  .chk{display:flex;align-items:center;gap:5px;font-size:12.5px;color:var(--dim);
+    background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:4px 9px;cursor:pointer}
+  .chk input{margin:0;accent-color:var(--accent)}
+
+  .sw{display:flex;align-items:center;gap:8px;background:var(--panel2);
+    border:1px solid var(--line);border-radius:6px;padding:5px 11px;font-size:13px}
+  .track{width:38px;height:20px;border-radius:999px;background:#30363d;
+    position:relative;cursor:pointer;transition:background .15s;flex:none}
+  .track.on{background:var(--ok)}
+  .knob{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;
+    background:#fff;transition:left .15s}
+  .track.on .knob{left:20px}
+
+  .totales{display:flex;gap:26px;flex-wrap:wrap;background:var(--panel2);
+    border:1px solid var(--line);border-radius:8px;padding:11px 18px;margin:16px 0}
+  .tot b{display:block;font-size:11px;letter-spacing:.6px;text-transform:uppercase;
+    color:var(--dim);font-weight:600}
+  .tot span{font-size:19px;font-weight:600}
+
+  main{padding:0 16px 40px;max-width:1550px;margin:0 auto}
+  .empty{text-align:center;color:var(--dim);padding:70px 20px;
+    border:1px dashed var(--line);border-radius:10px;margin-top:16px}
+
+  table{width:100%;border-collapse:collapse}
+  thead th{position:sticky;top:0;background:var(--panel);text-align:left;
+    font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--dim);
+    font-weight:600;padding:9px 10px;border-bottom:1px solid var(--line);z-index:5}
+  tbody td{padding:8px 10px;border-bottom:1px solid var(--line2)}
+  td.r,th.r{text-align:right}
+
+  tr.dia td{background:#111722;border-top:1px solid var(--line);
+    border-bottom:1px solid var(--line);padding:9px 10px;font-weight:600}
+  tr.dia .fecha{font-size:13.5px}
+  tr.dia .meta{color:var(--dim);font-weight:400;font-size:12.5px;margin-left:10px}
+
+  tbody tr.op{cursor:pointer}
+  tbody tr.op:hover{background:var(--panel)}
+  tbody tr.op.sent{opacity:.45}
+  .long{color:var(--ok);font-weight:600}
+  .short{color:var(--bad);font-weight:600}
+  .pos{color:var(--ok)} .neg{color:var(--bad)}
+  .caret{display:inline-block;width:12px;color:var(--dim);transition:transform .12s}
+  tr.open .caret{transform:rotate(90deg)}
+  .tag{background:var(--panel2);border:1px solid var(--line);border-radius:4px;
+    padding:1px 7px;font-size:11.5px;color:var(--dim);white-space:nowrap}
+  .tag.sent{color:var(--ok);border-color:var(--ok)}
+  .tag.src{font-size:10.5px;text-transform:uppercase;letter-spacing:.4px}
+
+  .detail td{background:#090d13;padding:0}
+  .inner{padding:13px 14px 15px 36px}
+  .inner h4{margin:0 0 9px;font-size:12px;letter-spacing:.5px;text-transform:uppercase;color:var(--dim)}
+  .inner table{width:auto;min-width:760px}
+  .inner thead th{background:#090d13;font-size:10.5px;top:auto;position:static}
+  .inner tbody td{padding:5px 10px;border-bottom:1px solid #151b24;font-size:12.5px}
+  .notes{display:flex;gap:10px;margin-top:13px;flex-wrap:wrap}
+  .notes input[type=text]{flex:1;min-width:210px}
+
+  dialog{background:var(--panel);color:var(--txt);border:1px solid var(--line);
+    border-radius:10px;padding:0;width:min(560px,94vw)}
+  dialog::backdrop{background:rgba(0,0,0,.65)}
+  .dlg-h{padding:14px 18px;border-bottom:1px solid var(--line);font-weight:600}
+  .dlg-b{padding:18px;max-height:70vh;overflow:auto}
+  .dlg-f{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:10px;justify-content:flex-end}
+  .fld{margin-bottom:14px}
+  .fld label{display:block;font-size:12px;color:var(--dim);margin-bottom:5px}
+  .fld input{width:100%}
+  .hint{font-size:12px;color:var(--dim);margin-top:5px}
+  .warnbox{background:rgba(210,153,34,.1);border:1px solid var(--warn);
+    border-radius:6px;padding:10px 12px;font-size:12.5px;margin-bottom:16px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="row">
+    <h1>Bandeja <span style="color:var(--dim);font-weight:400">· operaciones antes del journal</span></h1>
+    <div class="pills">
+      <span class="pill"><span class="dot" id="dPuente"></span><span id="tPuente">Puente…</span></span>
+      <span class="pill"><span class="dot" id="dNt8"></span><span id="tNt8">NinjaTrader…</span></span>
+      <span class="pill"><span class="dot" id="dUlt"></span><span id="tUlt">Sin operaciones</span></span>
+      <span class="pill"><span class="dot" id="dCofre"></span><span id="tCofre">Cofre…</span></span>
+    </div>
+  </div>
+
+  <div class="row">
+    <button class="chip" data-rango="hoy">Hoy</button>
+    <button class="chip" data-rango="ayer">Ayer</button>
+    <button class="chip" data-rango="7">7 días</button>
+    <button class="chip" data-rango="30">30 días</button>
+    <button class="chip" data-rango="todo">Todo</button>
+    <span class="sep"></span>
+    <label class="lbl">Desde</label><input type="date" id="fDesde">
+    <label class="lbl">Hasta</label><input type="date" id="fHasta">
+    <button id="bLimpiar">Limpiar fechas</button>
+    <span class="sep"></span>
+    <label class="lbl">Margen réplica</label>
+    <input type="number" id="tol" value="5" min="0" max="300" style="width:58px"><span class="lbl">s</span>
+  </div>
+
+  <div class="row">
+    <span class="lbl">Origen:</span>
+    <span id="origenes"></span>
+    <span class="spacer"></span>
+    <div class="sw">Envío automático
+      <span class="track" id="trAuto"><span class="knob"></span></span>
+      <span id="tAuto" style="color:var(--dim)">off</span>
+    </div>
+    <button id="bEnviar" disabled>Volcar al journal</button>
+    <button id="bJson">JSON</button>
+    <button id="bCsv">CSV</button>
+    <button id="bHist">Importar historial NT8</button>
+    <button id="bRecargar">Recargar</button>
+    <button id="bCfg">Ajustes</button>
+  </div>
+</header>
+
+<main>
+  <div class="totales">
+    <div class="tot"><b>Operaciones</b><span class="num" id="kOps">0</span></div>
+    <div class="tot"><b>Resultado bruto</b><span class="num" id="kBruto">0</span></div>
+    <div class="tot"><b>Comisiones</b><span class="num" id="kCom">0</span></div>
+    <div class="tot"><b>Neto</b><span class="num" id="kNeto">0</span></div>
+    <div class="tot"><b>Ganadoras</b><span class="num" id="kWin">0</span></div>
+    <div class="tot"><b>Pendientes</b><span class="num" id="kPend">0</span></div>
+    <div class="tot"><b>Seleccionadas</b><span class="num" id="kSel">0</span></div>
+  </div>
+
+  <div id="vacio" class="empty"><span id="vacioTxt">Sin operaciones en este rango.</span></div>
+  <table id="tabla" style="display:none">
+    <thead><tr>
+      <th style="width:30px"><input type="checkbox" id="selTodo" title="Seleccionar todas las pendientes"></th>
+      <th style="width:26px"></th>
+      <th style="width:150px">Entrada</th>
+      <th style="width:90px">Salida</th>
+      <th>Símbolo</th><th style="width:70px">Dir</th>
+      <th class="r">Cant.</th><th class="r">Precio ent.</th><th class="r">Precio sal.</th>
+      <th class="r" title="Resultado de una sola cuenta (mediana de las réplicas)">Por cuenta</th>
+      <th class="r">Comis.</th>
+      <th class="r" title="Suma de todas las cuentas replicadas">Total</th>
+      <th class="r">Cuentas</th><th>Estado</th>
+    </tr></thead>
+    <tbody id="cuerpo"></tbody>
+  </table>
+</main>
+
+<dialog id="dlgJournal">
+  <div class="dlg-h">Volcar al journal</div>
+  <div class="dlg-b">
+    <div id="jEstado" style="font-size:13px;color:var(--dim);margin-bottom:14px"></div>
+    <div id="jCuerpo" style="display:none">
+      <p style="margin:0 0 14px;font-size:12.5px;color:var(--dim)">
+        Tu journal usa sus propios nombres de cuenta y de activo. Dime a qué
+        corresponde cada uno y lo recuerdo para las próximas veces.</p>
+
+      <div style="font-size:12px;color:var(--dim);margin-bottom:6px">CUENTAS</div>
+      <div id="jCuentas" style="margin-bottom:16px"></div>
+
+      <div style="font-size:12px;color:var(--dim);margin-bottom:6px">ACTIVOS</div>
+      <div id="jActivos" style="margin-bottom:16px"></div>
+
+      <div class="fld"><label>Sesión (se pone igual en todas)</label>
+        <input type="text" id="jSesion" placeholder="NY AM"></div>
+    </div>
+  </div>
+  <div class="dlg-f">
+    <button id="bJCerrar">Cerrar</button>
+    <button class="primary" id="bJVolcar" disabled>Volcar</button>
+  </div>
+</dialog>
+
+<dialog id="dlgHist">
+  <div class="dlg-h">Importar historial de NinjaTrader 8</div>
+  <div class="dlg-b">
+    <p style="margin:0 0 14px;font-size:12.5px;color:var(--dim)">
+      NinjaTrader guarda todas tus ejecuciones pasadas en su base de datos.
+      Elige el periodo, mira lo que hay y decide qué traerte. Importar dos veces
+      no duplica nada.</p>
+
+    <div class="row" style="margin-bottom:12px">
+      <button class="chip" data-hd="7">7 días</button>
+      <button class="chip" data-hd="30">30 días</button>
+      <button class="chip" data-hd="90">90 días</button>
+      <button class="chip" data-hd="todo">Todo</button>
+    </div>
+    <div class="row" style="margin-bottom:14px">
+      <label class="lbl">Desde</label><input type="date" id="hDesde">
+      <label class="lbl">Hasta</label><input type="date" id="hHasta">
+      <button class="primary" id="bAnalizar">Analizar</button>
+    </div>
+
+    <div id="hEstado" style="font-size:13px;color:var(--dim);margin-bottom:12px"></div>
+    <div id="hResul" style="display:none">
+      <div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:14px">
+        <div class="tot"><b>Ejecuciones</b><span class="num" id="hTotal">0</span></div>
+        <div class="tot"><b>Cuentas</b><span class="num" id="hNCuentas">0</span></div>
+        <div class="tot"><b>Días</b><span class="num" id="hNDias">0</span></div>
+      </div>
+      <div style="font-size:12px;color:var(--dim);margin-bottom:6px">
+        SÍMBOLOS <button class="chip" id="hTodosSim" style="margin-left:8px">todos</button></div>
+      <div id="hSimbolos" style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px"></div>
+      <div style="font-size:12px;color:var(--dim);margin-bottom:6px">
+        CUENTAS <button class="chip" id="hTodasCta" style="margin-left:8px">todas</button>
+        <button class="chip" id="hNingunaCta">ninguna</button></div>
+      <div id="hCuentas" style="display:flex;gap:7px;flex-wrap:wrap;max-height:160px;overflow:auto;
+        border:1px solid var(--line);border-radius:6px;padding:9px;margin-bottom:14px"></div>
+      <div style="font-size:12px;color:var(--dim);margin-bottom:6px">DÍAS CON ACTIVIDAD</div>
+      <div id="hDias" style="max-height:130px;overflow:auto;border:1px solid var(--line);
+        border-radius:6px;padding:9px;font-size:12.5px"></div>
+    </div>
+  </div>
+  <div class="dlg-f">
+    <button id="bHCerrar">Cerrar</button>
+    <button class="primary" id="bImportar" disabled>Importar</button>
+  </div>
+</dialog>
+
+<dialog id="dlg">
+  <div class="dlg-h">Ajustes</div>
+  <div class="dlg-b">
+    <div class="warnbox">
+      <b>Las claves se guardan solo en este navegador</b>, en tu propio ordenador.
+      No se envían a ningún sitio salvo a tu Supabase. No las pegues nunca en un chat.
+    </div>
+    <div class="fld"><label>URL del puente</label><input type="text" id="cBridge" placeholder="http://127.0.0.1:8787"></div>
+    <div class="fld"><label>Token del puente (vacío si no usas)</label><input type="text" id="cToken"></div>
+    <div class="fld"><label>URL de Supabase (la misma de tu journal)</label>
+      <input type="text" id="cSbUrl" placeholder="https://xxxxxxxx.supabase.co"></div>
+    <div class="fld"><label>Clave pública de Supabase (anon / publishable)</label>
+      <input type="text" id="cSbKey" placeholder="eyJ… o sb_publishable_…"></div>
+    <div class="fld"><label>Secreto del cofre (el mismo de tu journal)</label>
+      <input type="text" id="cBox" placeholder="el mismo que tienes en el panel">
+      <div class="hint">El receptor usa tu misma puerta segura (panel_get / panel_set)
+        pero guarda en una fila aparte, con el sufijo <b>:receptor</b>.
+        No toca los datos de tu journal.</div></div>
+    <div class="fld"><label>Valor del punto en $ (solo si la fuente no manda el resultado)</label>
+      <input type="text" id="cPuntos">
+      <div class="hint">MetaTrader ya manda el resultado calculado y se usa ese.
+        Esta tabla solo se aplica cuando el fill llega con resultado 0, que es el caso de NinjaTrader.</div></div>
+  </div>
+  <div class="dlg-f">
+    <button id="bCerrar">Cancelar</button>
+    <button class="primary" id="bGuardar">Guardar</button>
+  </div>
+</dialog>
+
+<script>
+"use strict";
+
+const PUNTOS_DEF = "ES=50,MES=5,NQ=20,MNQ=2,YM=5,MYM=0.5,RTY=50,M2K=5,"
+  + "CL=1000,MCL=100,GC=100,MGC=10,SI=5000,NG=10000,ZB=1000,ZN=1000,ZF=1000,6E=125000,6J=12500000";
+
+// ---------------------------------------------------------------------------
+// Configuracion y estado persistente
+// ---------------------------------------------------------------------------
+const cfg = (function(){
+  let g = {};
+  try { g = JSON.parse(localStorage.getItem("receptor.cfg") || "{}"); } catch(e){}
+  // Si la pagina la sirve el propio puente (aunque sea desde otro equipo de la
+  // red), ese es el puente. Solo al abrirla como fichero suelto hay que adivinar.
+  const servida = /^https?:$/.test(location.protocol) && location.origin;
+  return {
+    bridge : g.bridge || (servida ? location.origin : "http://127.0.0.1:8787"),
+    token  : g.token  || "",
+    // Mismos datos que tu journal: URL del proyecto, clave publica y secreto
+    // del cofre. El receptor guarda en una fila aparte (secreto + ":receptor").
+    sbUrl  : g.sbUrl  || "", sbKey: g.sbKey || "", box: g.box || "",
+    puntos : g.puntos || PUNTOS_DEF,
+    auto   : !!g.auto,
+    tol    : Number.isFinite(g.tol) ? g.tol : 5,
+    rango  : g.rango || "todo",
+    desde  : g.desde || "", hasta: g.hasta || "",
+    // Por defecto solo NinjaTrader. MetaTrader y los fills de prueba del panel,
+    // fuera: se activan con las casillas de arriba si hacen falta.
+    origenes: (g.v === 2 && g.origenes) ? g.origenes : { nt8:true, mt5:false, demo:false },
+    v: 2
+  };
+})();
+function guardarCfg(){ localStorage.setItem("receptor.cfg", JSON.stringify(cfg)); }
+
+// Notas, etiquetas y marca de "enviada". Se guardan EN EL PUENTE para que el
+// PC y el Mac vean lo mismo; el navegador solo las cachea por si esta caido.
+let meta = {};
+try { meta = JSON.parse(localStorage.getItem("receptor.meta") || "{}"); } catch(e){}
+
+let metaSucia = {}, metaTimer = null;
+
+function guardarMeta(id){
+  if (id && meta[id]) meta[id].ts = Date.now();
+  cofreSucio = true;
+  localStorage.setItem("receptor.meta", JSON.stringify(meta));
+  if (id) metaSucia[id] = meta[id];
+  if (metaTimer) return;
+  metaTimer = setTimeout(async () => {
+    metaTimer = null;
+    const lote = metaSucia; metaSucia = {};
+    if (!Object.keys(lote).length) return;
+    try {
+      const h = { "Content-Type":"application/json" };
+      if (cfg.token) h["Authorization"] = "Bearer " + cfg.token;
+      await fetch(cfg.bridge + "/meta", { method:"POST", headers:h, body:JSON.stringify(lote) });
+    } catch(e){
+      // El puente no responde: se queda en el navegador y se reintenta luego.
+      Object.assign(metaSucia, lote);
+    }
+  }, 600);
+}
+
+async function cargarMetaDelPuente(){
+  try {
+    const d = await pedir("/meta");
+    if (d && d.ok && d.meta){
+      // Lo del puente manda; lo local solo rellena lo que alli no este.
+      meta = Object.assign({}, meta, d.meta);
+      localStorage.setItem("receptor.meta", JSON.stringify(meta));
+    }
+  } catch(e){}
+}
+
+function metaDe(id){
+  if (!meta[id]) meta[id] = { nota:"", etiqueta:"", enviada:false, ts:0 };
+  return meta[id];
+}
+
+function mapaPuntos(){
+  const m = {};
+  for (const par of cfg.puntos.split(",")){
+    const t = par.split("="); if (!t[0]) continue;
+    const n = parseFloat(t[1]);
+    if (Number.isFinite(n)) m[t[0].trim().toUpperCase()] = n;
+  }
+  return m;
+}
+
+// ---------------------------------------------------------------------------
+// El cofre: misma puerta segura que usa tu journal (panel_get / panel_set)
+// sobre tu propio Supabase. El receptor escribe en su propia fila, asi que
+// no toca nada de lo que ya tienes.
+// ---------------------------------------------------------------------------
+function cofreListo(){ return !!(cfg.sbUrl && cfg.sbKey && cfg.box && cfg.box.length >= 6); }
+function cofreCaja(){ return cfg.box + ":receptor"; }
+
+function cofreCab(){
+  const h = { "apikey": cfg.sbKey, "Content-Type":"application/json" };
+  // Las claves antiguas son JWT y ademas quieren Authorization.
+  if (/^eyJ/.test(cfg.sbKey)) h["Authorization"] = "Bearer " + cfg.sbKey;
+  return h;
+}
+
+async function cofreLlamar(fn, cuerpo, ms){
+  const corta = new AbortController();
+  const t = setTimeout(()=> corta.abort(), ms || 12000);
+  try {
+    const r = await fetch(cfg.sbUrl.replace(/\/+$/,"") + "/rest/v1/rpc/" + fn, {
+      method:"POST", headers:cofreCab(), body:JSON.stringify(cuerpo),
+      cache:"no-store", signal:corta.signal });
+    if (!r.ok){
+      let detalle = "";
+      try { const j = await r.json(); detalle = (j && (j.message||j.hint)) || ""; } catch(e){}
+      throw new Error("HTTP " + r.status +
+        (r.status===404 ? " · falta la puerta segura (panel_get/panel_set) en Supabase"
+         : (r.status===401||r.status===403) ? " · clave de Supabase incorrecta" : "") +
+        (detalle ? " · " + detalle : ""));
+    }
+    return await r.json().catch(()=> null);
+  } finally { clearTimeout(t); }
+}
+
+async function cofreLeer(){
+  const d = await cofreLlamar("panel_get", { p_box: cofreCaja() }, 9000);
+  return (d && typeof d === "object" && !Array.isArray(d)) ? d : null;
+}
+async function cofreEscribir(estado){
+  await cofreLlamar("panel_set", { p_box: cofreCaja(), p_data: estado }, 15000);
+}
+
+// Estado que viaja al cofre: las operaciones y sus notas.
+function estadoLocal(){
+  const opsG = {};
+  for (const o of ops) opsG[o.id] = comprimir(o);
+  return { v:1, ts:Date.now(), ops:opsG, meta:meta };
+}
+
+function comprimir(o){
+  return { id:o.id, t0:o.t0, t1:o.t1, simbolo:o.simbolo, dir:o.dir, origen:o.origen,
+    qty:o.qty, pEnt:o.pEnt, pSal:o.pSal, bruto:o.bruto, com:o.com, neto:o.neto,
+    porCuenta:o.porCuenta, abierta:!!o.abierta,
+    cuentas:o.cuentas.map(t=>({ cuenta:t.cuenta, nombre:t.nombre, contrato:t.contrato,
+      qty:t.qty, pEnt:t.pEnt, pSal:t.pSal, puntos:t.puntos, com:t.com,
+      bruto:t.bruto, neto:t.neto, abierta:!!t.abierta })) };
+}
+
+// Operaciones que llegaron del cofre y que este equipo no genera por si mismo
+// (el Mac no tiene puente: todo lo suyo viene de aqui).
+let opsRemotas = {};
+
+function fusionar(remoto){
+  if (!remoto) return false;
+  let cambio = false;
+
+  if (remoto.ops){
+    for (const id of Object.keys(remoto.ops)){
+      if (!opsRemotas[id]){ opsRemotas[id] = remoto.ops[id]; cambio = true; }
+    }
+  }
+  if (remoto.meta){
+    for (const id of Object.keys(remoto.meta)){
+      const r = remoto.meta[id], l = meta[id];
+      // Gana la edicion mas reciente.
+      if (!l || (r.ts||0) > (l.ts||0)){ meta[id] = r; cambio = true; }
+    }
+  }
+  return cambio;
+}
+
+let cofreSucio = false, cofreUltimo = 0, cofreEstado = "";
+
+async function cofreCiclo(forzar){
+  if (!cofreListo()) return;
+  try {
+    const remoto = await cofreLeer();
+    const cambio = fusionar(remoto);
+
+    const mio = estadoLocal();
+    const distinto = !remoto || JSON.stringify(remoto.ops||{}) !== JSON.stringify(mio.ops)
+                             || JSON.stringify(remoto.meta||{}) !== JSON.stringify(mio.meta);
+
+    if (forzar || cofreSucio || distinto){
+      // Lo que subimos es la union de lo nuestro y lo que ya habia.
+      const union = { v:1, ts:Date.now(),
+        ops: Object.assign({}, remoto && remoto.ops || {}, mio.ops),
+        meta: mio.meta };
+      await cofreEscribir(union);
+      cofreSucio = false;
+    }
+    cofreUltimo = Date.now();
+    cofreEstado = "ok";
+    if (cambio){ construir(); refrescar(); }
+  } catch(e){
+    cofreEstado = (e && e.message) || "error";
+  }
+  pintarCofre();
+}
+
+function pintarCofre(){
+  const d = el("dCofre"), t = el("tCofre");
+  if (!d) return;
+  if (!cofreListo()){ d.className="dot"; t.textContent="Cofre sin configurar"; return; }
+  if (cofreEstado === "ok"){
+    d.className="dot ok";
+    t.textContent = "Cofre al día · " + new Date(cofreUltimo).toLocaleTimeString("es-ES");
+  } else {
+    d.className="dot bad";
+    t.textContent = "Cofre: " + cofreEstado;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Puente
+// ---------------------------------------------------------------------------
+let fills = [], ultSeq = 0, ops = [], abiertas = {}, ultHb = null;
+let seleccion = new Set();   // operaciones marcadas para enviar
+
+async function pedir(ruta){
+  const h = { "Content-Type":"application/json" };
+  if (cfg.token) h["Authorization"] = "Bearer " + cfg.token;
+  const r = await fetch(cfg.bridge + ruta, { headers:h, cache:"no-store" });
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.json();
+}
+
+function fmtDur(s){
+  s = Math.max(0, Math.round(s));
+  if (s < 60) return s + "s";
+  if (s < 3600) return Math.floor(s/60) + "m";
+  if (s < 86400) return Math.floor(s/3600) + "h " + Math.floor((s%3600)/60) + "m";
+  return Math.floor(s/86400) + "d " + Math.floor((s%86400)/3600) + "h";
+}
+
+async function refrescarEstado(){
+  let salud = null;
+  try { salud = await pedir("/health"); } catch(e){}
+
+  const dP = el("dPuente"), tP = el("tPuente");
+  if (salud && salud.ok){ dP.className="dot ok"; tP.textContent = "Puente enlazado · " + fmtDur(salud.uptime||0); }
+  else { dP.className="dot bad"; tP.textContent = "Puente caído"; }
+
+  const dN = el("dNt8"), tN = el("tNt8");
+  const hb = salud && salud.heartbeats ? salud.heartbeats.nt8 : null;
+  ultHb = hb;
+  if (hb && hb.at){
+    const edad = (Date.now() - new Date(hb.at).getTime())/1000;
+    if (edad < 150){ dN.className="dot ok";
+      tN.textContent = "NinjaTrader enlazado · " + (hb.accounts!=null?hb.accounts:"?") + " cuentas"; }
+    else { dN.className="dot warn"; tN.textContent = "NinjaTrader sin latido desde hace " + fmtDur(edad); }
+  } else {
+    dN.className="dot bad";
+    tN.textContent = salud && salud.ok ? "NinjaTrader sin confirmar" : "NinjaTrader —";
+  }
+
+  const dU = el("dUlt"), tU = el("tUlt");
+  if (salud && salud.lastAt){ dU.className="dot ok";
+    tU.textContent = "Última recepción: " + new Date(salud.lastAt).toLocaleString("es-ES"); }
+  else { dU.className="dot"; tU.textContent = "Sin operaciones todavía"; }
+}
+
+async function traerFills(desdeCero){
+  if (desdeCero){ fills = []; ultSeq = 0; }
+  try {
+    const d = await pedir("/fills?since=" + ultSeq);
+    if (d && Array.isArray(d.fills) && d.fills.length){
+      for (const r of d.fills){ fills.push(r.fill); if (r.seq > ultSeq) ultSeq = r.seq; }
+      construir(); pintar();
+      if (cfg.auto) enviarPendientes(true);
+    } else if (desdeCero){ construir(); pintar(); }
+  } catch(e){}
+}
+
+// ---------------------------------------------------------------------------
+// Fills -> operaciones
+// ---------------------------------------------------------------------------
+function hora(f){
+  const t = Date.parse(String(f.at||"").replace(" ","T"));
+  return Number.isFinite(t) ? t : 0;
+}
+// Comision siempre como coste: negativa. NT8 la manda positiva, MT5 negativa.
+function coste(c){ return -Math.abs(Number(c)||0); }
+
+function construir(){
+  const pts = mapaPuntos();
+
+  const series = new Map();
+  for (const f of fills){
+    if (!f || !f.accountId || !f.symbol) continue;
+    const k = f.accountId + "\u0000" + (f.symbolFull || f.symbol);
+    if (!series.has(k)) series.set(k, []);
+    series.get(k).push(f);
+  }
+
+  const trades = [];
+  for (const lista of series.values()){
+    lista.sort((a,b)=> hora(a)-hora(b));
+    let pos = 0, cur = null;
+
+    for (const f of lista){
+      const q = Math.abs(Number(f.qty)||0);
+      if (!q) continue;
+      const firmado = f.side === "Sell" ? -q : q;
+
+      if (pos === 0 || !cur){
+        cur = { cuenta:f.accountId, nombre:f.accountName || f.accountId,
+                simbolo:f.symbol, contrato:f.symbolFull || f.symbol,
+                origen:f.source || "?",
+                dir: firmado > 0 ? "Long" : "Short",
+                ent:[], sal:[], com:0, bruto:0, tienePnl:false, pv:0,
+                t0:hora(f), t1:hora(f) };
+        pos = 0;
+      }
+
+      // Si la fuente marca entrada/salida (MetaTrader lo hace), mandamos eso.
+      let esEntrada;
+      if (f.entry === "in")       esEntrada = true;
+      else if (f.entry === "out") esEntrada = false;
+      else esEntrada = (cur.dir === "Long" && firmado > 0) || (cur.dir === "Short" && firmado < 0);
+
+      (esEntrada ? cur.ent : cur.sal).push({ q:q, p:Number(f.price)||0 });
+      cur.com += coste(f.commission);
+      // El valor del punto lo manda la propia fuente cuando lo sabe.
+      if (Number(f.pointValue)) cur.pv = Number(f.pointValue);
+      if (Number(f.pnl)){ cur.bruto += Number(f.pnl); cur.tienePnl = true; }
+      cur.t1 = hora(f);
+      pos += firmado;
+
+      if (pos === 0 && cur.sal.length){ cerrar(cur, pts); trades.push(cur); cur = null; }
+    }
+    if (cur && pos !== 0){ cur.abierta = true; cerrar(cur, pts); trades.push(cur); }
+  }
+
+  const tol = (cfg.tol||0) * 1000;
+  trades.sort((a,b)=> a.t0 - b.t0);
+  const grupos = [];
+  for (const t of trades){
+    let g = null;
+    for (let i = grupos.length-1; i >= 0; i--){
+      const c = grupos[i];
+      if (t.t0 - c.t0 > tol + 60000) break;
+      if (c.simbolo === t.simbolo && c.dir === t.dir && c.origen === t.origen
+          && Math.abs(c.t0 - t.t0) <= tol){ g = c; break; }
+    }
+    if (!g){ g = { simbolo:t.simbolo, dir:t.dir, origen:t.origen, t0:t.t0, t1:t.t1, cuentas:[] };
+             grupos.push(g); }
+    g.cuentas.push(t);
+    if (t.t1 > g.t1) g.t1 = t.t1;
+    if (t.t0 < g.t0) g.t0 = t.t0;
+  }
+
+  for (const g of grupos){
+    g.id     = g.origen + "|" + g.simbolo + "|" + g.dir + "|" + new Date(g.t0).toISOString();
+    g.qty    = g.cuentas.reduce((s,t)=> s+t.qty, 0);
+    g.bruto  = g.cuentas.reduce((s,t)=> s+t.bruto, 0);
+    g.com    = g.cuentas.reduce((s,t)=> s+t.com, 0);
+    g.neto   = g.bruto + g.com;
+    g.porCuenta = mediana(g.cuentas.map(t=> t.neto || 0));
+    g.abierta= g.cuentas.some(t=> t.abierta);
+    const pe = g.cuentas.reduce((s,t)=> s + t.pEnt*t.qty, 0);
+    const ps = g.cuentas.reduce((s,t)=> s + t.pSal*t.qty, 0);
+    g.pEnt = g.qty ? pe/g.qty : 0;
+    g.pSal = g.qty ? ps/g.qty : 0;
+  }
+  // A lo calculado aqui le sumamos lo que llego del cofre y que este equipo
+  // no puede generar (en el Mac no hay puente: todo viene por ahi).
+  const vistos = {};
+  for (const g of grupos) vistos[g.id] = true;
+  for (const id of Object.keys(opsRemotas)){
+    if (vistos[id]) continue;
+    const r = opsRemotas[id];
+    grupos.push(Object.assign({}, r, { cuentas: r.cuentas || [] }));
+  }
+
+  grupos.sort((a,b)=> b.t0 - a.t0);
+  ops = grupos;
+}
+
+// Resultado representativo de UNA cuenta. Mediana: no la descuadra que una
+// cuenta se salga por un deslizamiento raro.
+function mediana(a){
+  const x = a.slice().sort((p,q)=> p-q), n = x.length;
+  if (!n) return 0;
+  return n % 2 ? x[(n-1)/2] : (x[n/2-1] + x[n/2]) / 2;
+}
+
+function cerrar(t, pts){
+  const med = a => { const q = a.reduce((s,x)=>s+x.q,0);
+    return { q:q, p:q ? a.reduce((s,x)=>s+x.p*x.q,0)/q : 0 }; };
+  const e = med(t.ent), s = med(t.sal);
+  t.qty = e.q; t.pEnt = e.p; t.pSal = s.p;
+
+  if (t.abierta){ t.bruto = 0; t.puntos = 0; return; }
+
+  t.puntos = t.dir === "Long" ? (s.p - e.p) : (e.p - s.p);
+
+  // Si la fuente ya manda el resultado (MetaTrader), ese manda.
+  // Si llega a 0 (NinjaTrader), lo calculamos con el valor del punto.
+  if (!t.tienePnl){
+    const vp = t.pv || pts[String(t.simbolo).toUpperCase()] || 0;
+    t.bruto = t.puntos * Math.min(e.q, s.q || e.q) * vp;
+    t.sinValorPunto = !vp;
+  }
+  t.neto = t.bruto + t.com;
+}
+
+// ---------------------------------------------------------------------------
+// Filtros
+// ---------------------------------------------------------------------------
+function dia(ms){ const d = new Date(ms);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); }
+function iso(ms){ const d = new Date(ms);
+  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0"); }
+
+function enRango(ms){
+  if (cfg.desde && iso(ms) < cfg.desde) return false;
+  if (cfg.hasta && iso(ms) > cfg.hasta) return false;
+  if (cfg.desde || cfg.hasta) return true;
+  const r = cfg.rango;
+  if (r === "todo") return true;
+  if (r === "hoy")  return dia(ms) === dia(Date.now());
+  if (r === "ayer") return dia(ms) === dia(Date.now()) - 86400000;
+  return (Date.now() - ms) <= Number(r)*86400000;
+}
+function visibles(){
+  return ops.filter(o => cfg.origenes[o.origen] !== false && enRango(o.t0));
+}
+
+// ---------------------------------------------------------------------------
+// Pintado
+// ---------------------------------------------------------------------------
+function el(id){ return document.getElementById(id); }
+function esc(s){ return String(s==null?"":s)
+  .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function cssId(s){ return String(s).replace(/[^a-zA-Z0-9]/g,"_"); }
+function fmt(n,d){ return (Number(n)||0).toLocaleString("es-ES",
+  { minimumFractionDigits:d, maximumFractionDigits:d }); }
+function dinero(n){ const v = Number(n)||0;
+  return '<span class="' + (v>=0?"pos":"neg") + '">' + fmt(v,2) + " $</span>"; }
+function hhmmss(ms){ return new Date(ms).toLocaleTimeString("es-ES",
+  { hour:"2-digit", minute:"2-digit", second:"2-digit" }); }
+function fechaLarga(ms){ return new Date(ms).toLocaleDateString("es-ES",
+  { weekday:"long", day:"numeric", month:"long", year:"numeric" }); }
+
+function pintar(){
+  const lista = visibles();
+
+  // Totales del rango
+  const bruto = lista.reduce((s,o)=> s+o.bruto, 0);
+  const com   = lista.reduce((s,o)=> s+o.com, 0);
+  const cerradas = lista.filter(o=> !o.abierta);
+  el("kOps").textContent   = lista.length;
+  el("kBruto").innerHTML   = dinero(bruto);
+  el("kCom").innerHTML     = dinero(com);
+  el("kNeto").innerHTML    = dinero(bruto+com);
+  el("kWin").textContent   = cerradas.length
+    ? cerradas.filter(o=> o.neto>0).length + " / " + cerradas.length
+      + "  (" + Math.round(100*cerradas.filter(o=>o.neto>0).length/cerradas.length) + "%)"
+    : "0";
+  el("kPend").textContent  = lista.filter(o=> !metaDe(o.id).enviada && !o.abierta).length;
+  el("kSel").textContent   = lista.filter(o=> seleccion.has(o.id)).length;
+
+  if (!lista.length) el("vacioTxt").innerHTML = textoVacio();
+  el("vacio").style.display = lista.length ? "none" : "block";
+  el("tabla").style.display = lista.length ? "" : "none";
+
+  const cuerpo = el("cuerpo");
+  cuerpo.innerHTML = "";
+
+  let diaActual = null;
+  for (const o of lista){
+    const d = dia(o.t0);
+    if (d !== diaActual){
+      diaActual = d;
+      const delDia = lista.filter(x => dia(x.t0) === d);
+      const nBruto = delDia.reduce((s,x)=> s+x.bruto, 0);
+      const nCom   = delDia.reduce((s,x)=> s+x.com, 0);
+      const tr = document.createElement("tr");
+      tr.className = "dia";
+      tr.innerHTML = '<td colspan="14"><span class="fecha">' + fechaLarga(d) + '</span>' +
+        '<span class="meta">' + delDia.length + (delDia.length===1?" operación":" operaciones") +
+        ' · bruto ' + fmt(nBruto,2) + ' $ · comisiones ' + fmt(nCom,2) + ' $</span>' +
+        '<span style="float:right" class="num">Total del día: ' + dinero(nBruto+nCom) + '</span></td>';
+      cuerpo.appendChild(tr);
+    }
+
+    const m = metaDe(o.id);
+    const tr = document.createElement("tr");
+    tr.className = "op" + (m.enviada ? " sent" : "") + (abiertas[o.id] ? " open" : "");
+    const marcable = !o.abierta && !m.enviada;
+    tr.innerHTML =
+      '<td>' + (marcable
+        ? '<input type="checkbox" data-sel="1"' + (seleccion.has(o.id) ? " checked" : "") + '>'
+        : '') + '</td>' +
+      '<td><span class="caret">&#9654;</span></td>' +
+      '<td class="num">' + hhmmss(o.t0) + '</td>' +
+      '<td class="num">' + (o.abierta ? "—" : hhmmss(o.t1)) + '</td>' +
+      '<td><b>' + esc(o.simbolo) + '</b> <span class="tag src">' + esc(o.origen) + '</span></td>' +
+      '<td class="' + (o.dir==="Long"?"long":"short") + '">' + (o.dir==="Long"?"LARGO":"CORTO") + '</td>' +
+      '<td class="r num">' + fmt(o.qty, o.qty%1 ? 2 : 0) + '</td>' +
+      '<td class="r num">' + fmt(o.pEnt,2) + '</td>' +
+      '<td class="r num">' + (o.abierta ? "—" : fmt(o.pSal,2)) + '</td>' +
+      '<td class="r num">' + (o.abierta ? "—" : dinero(o.porCuenta)) + '</td>' +
+      '<td class="r num">' + fmt(o.com,2) + '</td>' +
+      '<td class="r num"><b>' + (o.abierta ? "abierta" : dinero(o.neto)) + '</b></td>' +
+      '<td class="r num">' + o.cuentas.length + '</td>' +
+      '<td>' + (m.enviada ? '<span class="tag sent">enviada</span>' : '<span class="tag">pendiente</span>') +
+        (m.etiqueta ? ' <span class="tag">' + esc(m.etiqueta) + '</span>' : '') + '</td>';
+    tr.onclick = () => { abiertas[o.id] = !abiertas[o.id]; pintar(); };
+    const caja = tr.querySelector("[data-sel]");
+    if (caja){
+      caja.onclick = e => {
+        e.stopPropagation();
+        e.target.checked ? seleccion.add(o.id) : seleccion.delete(o.id);
+        refrescarBotones(); pintarSelTodo();
+      };
+    }
+    cuerpo.appendChild(tr);
+
+    if (abiertas[o.id]) cuerpo.appendChild(detalle(o, m));
+  }
+}
+
+// Cuando no hay nada que pintar, decir POR QUE y no solo "sin operaciones".
+function textoVacio(){
+  const hayNt8 = ops.some(o=> o.origen === "nt8");
+  const otros  = ops.filter(o=> cfg.origenes[o.origen] === false).length;
+  const cola   = ultHb && ultHb.accounts != null ? ultHb.accounts : null;
+
+  if (!hayNt8 && cfg.origenes.nt8 !== false){
+    return "<b>Todavía no ha llegado ninguna operación de NinjaTrader.</b><br>" +
+      '<span style="font-size:12.5px">' +
+      (cola != null
+        ? "El receptor está enlazado y escuchando " + cola + " cuentas. "
+        : "Revisa arriba que NinjaTrader aparezca en verde. ") +
+      "En cuanto abras y cierres una posición aparecerá aquí en 2-3 segundos." +
+      (otros ? "<br>Hay " + otros + " operaciones de otros orígenes ocultas; márcalos arriba para verlas." : "") +
+      "</span>";
+  }
+  return "Sin operaciones en este rango." +
+    (otros ? '<br><span style="font-size:12.5px">Hay ' + otros +
+      " de otros orígenes ocultas.</span>" : "");
+}
+
+function detalle(o, m){
+  const tr = document.createElement("tr");
+  tr.className = "detail";
+  const td = document.createElement("td");
+  td.colSpan = 14;
+
+  let filas = "";
+  for (const t of o.cuentas.slice().sort((a,b)=> b.neto - a.neto)){
+    filas += '<tr>' +
+      '<td><b>' + esc(t.nombre) + '</b>' +
+        (t.nombre !== t.cuenta ? ' <span class="tag">' + esc(t.cuenta) + '</span>' : '') + '</td>' +
+      '<td class="num">' + esc(t.contrato) + '</td>' +
+      '<td class="r num">' + fmt(t.qty, t.qty%1 ? 2 : 0) + '</td>' +
+      '<td class="r num">' + fmt(t.pEnt,2) + '</td>' +
+      '<td class="r num">' + (t.abierta ? "—" : fmt(t.pSal,2)) + '</td>' +
+      '<td class="r num">' + (t.abierta ? "—" : fmt(t.puntos,2)) + '</td>' +
+      '<td class="r num">' + (t.abierta ? "—" : dinero(t.bruto)) +
+        (t.sinValorPunto ? ' <span class="tag" title="Falta el valor del punto de este símbolo en Ajustes">sin valor punto</span>' : '') + '</td>' +
+      '<td class="r num">' + fmt(t.com,2) + '</td>' +
+      '<td class="r num"><b>' + (t.abierta ? "abierta" : dinero(t.neto)) + '</b></td></tr>';
+  }
+
+  td.innerHTML =
+    '<div class="inner">' +
+      '<h4>' + o.cuentas.length + (o.cuentas.length===1?" cuenta":" cuentas") + ' · ' +
+        esc(o.simbolo) + ' ' + (o.dir==="Long"?"largo":"corto") + ' · entrada ' + hhmmss(o.t0) +
+        (o.abierta ? "" : ' · salida ' + hhmmss(o.t1)) + '</h4>' +
+      '<table><thead><tr><th>Cuenta</th><th>Contrato</th><th class="r">Cant.</th>' +
+      '<th class="r">Entrada</th><th class="r">Salida</th><th class="r">Puntos</th>' +
+      '<th class="r">Bruto</th><th class="r">Comis.</th><th class="r">Neto</th>' +
+      '</tr></thead><tbody>' + filas + '</tbody></table>' +
+      '<div class="notes">' +
+        '<input type="text" id="et_' + cssId(o.id) + '" placeholder="Etiqueta / setup" value="' + esc(m.etiqueta) + '">' +
+        '<input type="text" id="no_' + cssId(o.id) + '" placeholder="Notas de la operación" value="' + esc(m.nota) + '">' +
+        '<button data-marcar="1">' + (m.enviada ? "Marcar pendiente" : "Marcar enviada") + '</button>' +
+      '</div>' +
+    '</div>';
+
+  td.onclick = e => e.stopPropagation();
+  tr.appendChild(td);
+
+  setTimeout(() => {
+    const et = el("et_" + cssId(o.id)), no = el("no_" + cssId(o.id));
+    if (et) et.oninput = () => { metaDe(o.id).etiqueta = et.value; guardarMeta(o.id); };
+    if (no) no.oninput = () => { metaDe(o.id).nota = no.value; guardarMeta(o.id); };
+    const b = td.querySelector("[data-marcar]");
+    if (b) b.onclick = () => { const mm = metaDe(o.id); mm.enviada = !mm.enviada;
+      guardarMeta(o.id); pintar(); refrescarBotones(); };
+  }, 0);
+
+  return tr;
+}
+
+// ---------------------------------------------------------------------------
+// Journal (Supabase)
+// ---------------------------------------------------------------------------
+function journalListo(){ return cofreListo(); }
+
+function pendientes(){
+  return visibles().filter(o => !metaDe(o.id).enviada && !o.abierta);
+}
+function seleccionadas(){
+  return pendientes().filter(o => seleccion.has(o.id));
+}
+
+function pintarSelTodo(){
+  const caja = el("selTodo");
+  if (!caja) return;
+  const pend = pendientes(), sel = seleccionadas();
+  caja.checked = pend.length > 0 && sel.length === pend.length;
+  caja.indeterminate = sel.length > 0 && sel.length < pend.length;
+}
+
+function refrescarBotones(){
+  const listo = journalListo();
+  const sel = seleccionadas();
+  const b = el("bEnviar");
+  b.disabled = !listo || sel.length === 0;
+  b.textContent = listo
+    ? "Volcar al journal (" + sel.length + ")"
+    : "Volcar al journal · falta el cofre";
+  b.title = listo
+    ? (sel.length ? "" : "Marca las operaciones que quieras pasar")
+    : "Rellena URL, clave y secreto del cofre en Ajustes";
+}
+
+function aFila(o){
+  const m = metaDe(o.id);
+  return {
+    op_id: o.id,
+    fecha: new Date(o.t0).toISOString(),
+    cierre: new Date(o.t1).toISOString(),
+    simbolo: o.simbolo, direccion: o.dir, origen: o.origen,
+    cantidad: Number(o.qty.toFixed(4)),
+    precio_entrada: Number(o.pEnt.toFixed(4)),
+    precio_salida: Number(o.pSal.toFixed(4)),
+    resultado_bruto: Number(o.bruto.toFixed(2)),
+    resultado_por_cuenta: Number((o.porCuenta||0).toFixed(2)),
+    comision: Number(o.com.toFixed(2)),
+    resultado: Number(o.neto.toFixed(2)),
+    num_cuentas: o.cuentas.length,
+    cuentas: o.cuentas.map(t => ({
+      cuenta: t.cuenta, nombre: t.nombre, contrato: t.contrato,
+      cantidad: Number(t.qty.toFixed(4)),
+      entrada: Number(t.pEnt.toFixed(4)), salida: Number(t.pSal.toFixed(4)),
+      bruto: Number(t.bruto.toFixed(2)), comision: Number(t.com.toFixed(2)),
+      resultado: Number(t.neto.toFixed(2))
+    })),
+    etiqueta: m.etiqueta || null, nota: m.nota || null
+  };
+}
+
+async function enviarPendientes(silencioso, lista){
+  if (!cofreListo()){
+    if (!silencioso) alert("Primero configura el cofre en Ajustes.");
+    return;
+  }
+  // Sin lista explicita (modo automatico) van todas las pendientes.
+  const pend = lista || pendientes();
+  if (!pend.length) return;
+  // De momento marcamos como enviadas y lo subimos al cofre. El volcado al
+  // journal de verdad se cablea en el siguiente paso.
+  for (const o of pend){ metaDe(o.id).enviada = true; seleccion.delete(o.id); guardarMeta(o.id); }
+  pintar(); refrescarBotones(); pintarSelTodo();
+  await cofreCiclo(true);
+  if (!silencioso) alert("Marcadas " + pend.length + " operaciones como enviadas.\n\n"
+    + "Ya están en el cofre y las verás igual desde el Mac.\n"
+    + "El volcado automático a tu journal es el siguiente paso.");
+}
+
+// ---------------------------------------------------------------------------
+// Descargas
+// ---------------------------------------------------------------------------
+function bajar(nombre, texto, tipo){
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([texto], { type:tipo }));
+  a.download = nombre; a.click();
+  setTimeout(()=> URL.revokeObjectURL(a.href), 2000);
+}
+function sello(){ return new Date().toISOString().slice(0,10); }
+
+function csv(){
+  const cab = ["fecha","hora_entrada","hora_salida","simbolo","direccion","origen","cantidad",
+    "precio_entrada","precio_salida","por_cuenta","comision","total","num_cuentas","cuentas","etiqueta","nota"];
+  const q = v => '"' + String(v==null?"":v).replace(/"/g,'""') + '"';
+  const l = [cab.join(";")];
+  for (const o of visibles()){
+    const m = metaDe(o.id);
+    l.push([ iso(o.t0), hhmmss(o.t0), o.abierta?"":hhmmss(o.t1), o.simbolo, o.dir, o.origen,
+      o.qty, o.pEnt.toFixed(4), o.pSal.toFixed(4), (o.porCuenta||0).toFixed(2), o.com.toFixed(2),
+      o.neto.toFixed(2), o.cuentas.length,
+      o.cuentas.map(t=> t.nombre + ":" + t.neto.toFixed(2)).join(" | "),
+      m.etiqueta, m.nota ].map(q).join(";"));
+  }
+  bajar("operaciones_" + sello() + ".csv", "﻿" + l.join("\r\n"), "text/csv;charset=utf-8");
+}
+
+// ---------------------------------------------------------------------------
+// Interfaz
+// ---------------------------------------------------------------------------
+function pintarChips(){
+  document.querySelectorAll("[data-rango]").forEach(b =>
+    b.className = "chip" + (!cfg.desde && !cfg.hasta && b.dataset.rango === cfg.rango ? " on" : ""));
+}
+function pintarOrigenes(){
+  const cont = el("origenes");
+  const vistos = new Set(ops.map(o=>o.origen));
+  for (const k of Object.keys(cfg.origenes)) vistos.add(k);
+  cont.innerHTML = "";
+  for (const src of [...vistos].sort()){
+    const n = ops.filter(o=>o.origen===src).length;
+    const lab = document.createElement("label");
+    lab.className = "chk";
+    lab.innerHTML = '<input type="checkbox" ' + (cfg.origenes[src]!==false?"checked":"") + '> ' +
+      esc(src) + ' (' + n + ')';
+    lab.querySelector("input").onchange = e => {
+      cfg.origenes[src] = e.target.checked; guardarCfg(); pintar(); refrescarBotones();
+    };
+    cont.appendChild(lab);
+  }
+}
+function pintarAuto(){
+  el("trAuto").className = "track" + (cfg.auto ? " on" : "");
+  el("tAuto").textContent = cfg.auto ? "on" : "off";
+  el("tAuto").style.color = cfg.auto ? "var(--ok)" : "var(--dim)";
+}
+function refrescar(){ pintar(); pintarOrigenes(); pintarChips(); refrescarBotones(); pintarSelTodo(); }
+
+document.querySelectorAll("[data-rango]").forEach(b => b.onclick = () => {
+  cfg.rango = b.dataset.rango; cfg.desde = ""; cfg.hasta = "";
+  el("fDesde").value = ""; el("fHasta").value = "";
+  guardarCfg(); refrescar();
+});
+el("fDesde").onchange = e => { cfg.desde = e.target.value; guardarCfg(); refrescar(); };
+el("fHasta").onchange = e => { cfg.hasta = e.target.value; guardarCfg(); refrescar(); };
+el("bLimpiar").onclick = () => { cfg.desde=""; cfg.hasta="";
+  el("fDesde").value=""; el("fHasta").value=""; guardarCfg(); refrescar(); };
+el("tol").onchange = e => { cfg.tol = Math.max(0, Number(e.target.value)||0);
+  guardarCfg(); construir(); refrescar(); };
+el("trAuto").onclick = () => { cfg.auto = !cfg.auto; guardarCfg(); pintarAuto();
+  if (cfg.auto) enviarPendientes(false); };
+el("selTodo").onclick = e => {
+  const pend = pendientes();
+  if (e.target.checked) for (const o of pend) seleccion.add(o.id);
+  else                  for (const o of pend) seleccion.delete(o.id);
+  pintar(); refrescarBotones(); pintarSelTodo();
+};
+el("bRecargar").onclick = () => traerFills(true).then(refrescar);
+el("bEnviar").onclick = jAbrir;
+el("bCsv").onclick = csv;
+el("bJson").onclick = () =>
+  bajar("operaciones_" + sello() + ".json", JSON.stringify(visibles().map(aFila), null, 2), "application/json");
+
+// ---------------------------------------------------------------------------
+// Volcado al journal
+//
+// Escribe en la MISMA fila del cofre que usa tu journal (sin el sufijo
+// ":receptor"), respetando su formato de operacion: lee el estado, le anade
+// las operaciones nuevas y lo devuelve entero.
+// ---------------------------------------------------------------------------
+const dlgJournal = el("dlgJournal");
+let jEstadoRemoto = null, jPend = [];
+
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+
+const MESES = { "01":"ENE","02":"FEB","03":"MAR","04":"ABR","05":"MAY","06":"JUN",
+                "07":"JUL","08":"AGO","09":"SEP","10":"OCT","11":"NOV","12":"DIC" };
+function mesDe(f){ return MESES[(f||"").slice(5,7)] || ""; }
+
+// MNQ 12-26  ->  MNQZ2026   (codigos de mes de futuros)
+const CODMES = { "01":"F","02":"G","03":"H","04":"J","05":"K","06":"M",
+                 "07":"N","08":"Q","09":"U","10":"V","11":"X","12":"Z" };
+function activoLargo(simbolo, contrato){
+  const m = String(contrato||"").match(/(\d{2})-(\d{2})/);
+  if (!m) return simbolo;
+  return simbolo + (CODMES[m[1]] || "") + "20" + m[2];
+}
+
+function hhmm(ms){ return new Date(ms).toLocaleTimeString("es-ES",
+  { hour:"2-digit", minute:"2-digit", second:"2-digit" }); }
+function duracion(a,b){
+  const s = Math.max(0, Math.round((b-a)/1000));
+  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60);
+  return h + ":" + String(m).padStart(2,"0") + " h";
+}
+
+async function jAbrir(){
+  jPend = seleccionadas();
+  el("jCuerpo").style.display = "none";
+  el("bJVolcar").disabled = true;
+  dlgJournal.showModal();
+
+  if (!cofreListo()){ el("jEstado").innerHTML =
+    '<span style="color:var(--bad)">Configura antes el cofre en Ajustes.</span>'; return; }
+  if (!jPend.length){ el("jEstado").textContent =
+    "No has marcado ninguna operación."; return; }
+
+  el("jEstado").textContent = "Leyendo tu journal…";
+  try {
+    const d = await cofreLlamar("panel_get", { p_box: cfg.box }, 12000);
+    jEstadoRemoto = (d && typeof d === "object" && !Array.isArray(d)) ? d : null;
+    if (!jEstadoRemoto){ el("jEstado").innerHTML =
+      '<span style="color:var(--bad)">Tu journal está vacío o el secreto no es el mismo. ' +
+      'Revisa que sea exactamente el del panel.</span>'; return; }
+
+    const trades = jEstadoRemoto.trades || [];
+    const yaEstan = jPend.filter(o => trades.some(t => t.recOpId === o.id)).length;
+
+    el("jEstado").innerHTML = "Tu journal tiene <b>" + trades.length + "</b> operaciones." +
+      (yaEstan ? "<br><span style=\"color:var(--warn)\">" + yaEstan +
+         " de las marcadas ya estaban volcadas: se saltarán.</span>" : "");
+
+    jMapas();
+    el("jCuerpo").style.display = "block";
+    el("bJVolcar").disabled = false;
+    el("bJVolcar").textContent = "Volcar " + (jPend.length - yaEstan) + " operaciones";
+  } catch(e){
+    el("jEstado").innerHTML = '<span style="color:var(--bad)">No pude leer el journal: '
+      + esc(e.message) + "</span>";
+  }
+}
+
+function jMapas(){
+  const S = jEstadoRemoto || {};
+  const cuentasJ = (S.accountsAll || []).map(a => (typeof a === "string") ? a : (a.nombre || a.name || a.id))
+                     .filter(Boolean);
+  const activosJ = Object.keys((S.config && S.config.usd) || {});
+  for (const t of (S.trades || []).slice(0,400))
+    if (t.activo && activosJ.indexOf(t.activo) < 0) activosJ.push(t.activo);
+
+  cfg.mapCuentas = cfg.mapCuentas || {};
+  cfg.mapActivos = cfg.mapActivos || {};
+
+  const cuentasR = [...new Set(jPend.flatMap(o => o.cuentas.map(t => t.cuenta)))].sort();
+  const activosR = [...new Set(jPend.map(o => o.simbolo))].sort();
+
+  el("jCuentas").innerHTML = "";
+  for (const c of cuentasR) el("jCuentas").appendChild(jFila(c, cuentasJ, cfg.mapCuentas));
+  el("jActivos").innerHTML = "";
+  for (const a of activosR){
+    const sug = activosJ.find(x => x.indexOf(a) === 0);
+    if (!cfg.mapActivos[a]) cfg.mapActivos[a] = sug || a;
+    el("jActivos").appendChild(jFila(a, activosJ, cfg.mapActivos));
+  }
+}
+
+function jFila(clave, opciones, mapa){
+  const d = document.createElement("div");
+  d.style.cssText = "display:flex;align-items:center;gap:10px;margin-bottom:7px";
+  const sel = document.createElement("select");
+  sel.style.flex = "1";
+  const libres = [...new Set([mapa[clave] || clave].concat(opciones))].filter(Boolean);
+  sel.innerHTML = libres.map(v =>
+    '<option' + (v === (mapa[clave] || clave) ? " selected" : "") + '>' + esc(v) + "</option>").join("");
+  sel.onchange = () => { mapa[clave] = sel.value; guardarCfg(); };
+  if (!mapa[clave]) mapa[clave] = sel.value;
+  d.innerHTML = '<span class="num" style="min-width:200px;font-size:12.5px">'
+    + esc(clave) + '</span><span style="color:var(--dim)">→</span>';
+  d.appendChild(sel);
+  return d;
+}
+
+function aTrade(o){
+  const m = metaDe(o.id);
+  const fecha = iso(o.t0);
+  const nCuentas = o.cuentas.length || 1;
+  const cuentas = o.cuentas.map(t => (cfg.mapCuentas && cfg.mapCuentas[t.cuenta]) || t.cuenta);
+  const resPC = {};
+  for (const t of o.cuentas)
+    resPC[(cfg.mapCuentas && cfg.mapCuentas[t.cuenta]) || t.cuenta] = Number(t.neto.toFixed(2));
+
+  const contrato = (o.cuentas[0] && o.cuentas[0].contrato) || o.simbolo;
+  const activo = (cfg.mapActivos && cfg.mapActivos[o.simbolo]) || activoLargo(o.simbolo, contrato);
+
+  return {
+    id: uid(),
+    recOpId: o.id,                       // para no volcar dos veces lo mismo
+    fecha: fecha, mes: mesDe(fecha),
+    cuenta: cuentas.join(", ") || "FONDEO",
+    cuentas: cuentas,
+    activo: activo,
+    apertura: hhmm(o.t0),
+    cierre: o.abierta ? undefined : hhmm(o.t1),
+    dur: o.abierta ? undefined : duracion(o.t0, o.t1),
+    sesion: (el("jSesion").value || "").trim() || undefined,
+    direccion: o.dir === "Long" ? "Largo" : "Corto",
+    unidades: Number((o.qty / nCuentas).toFixed(2)),
+    entrada: Number(o.pEnt.toFixed(4)),
+    salida: o.abierta ? undefined : Number(o.pSal.toFixed(4)),
+    replica: nCuentas,
+    resultado: Number((o.porCuenta || 0).toFixed(2)),   // por cuenta, como en tu journal
+    resPorCuenta: resPC,
+    pnlReal: Number(o.neto.toFixed(2)),                 // total de las replicas
+    setup: m.etiqueta || undefined,
+    observaciones: m.nota || undefined,
+    origenReceptor: o.origen
+  };
+}
+
+async function jVolcar(){
+  el("bJVolcar").disabled = true;
+  el("jEstado").textContent = "Volcando…";
+  try {
+    // Releemos justo antes de escribir, por si el journal cambio mientras tanto.
+    const d = await cofreLlamar("panel_get", { p_box: cfg.box }, 12000);
+    const S = (d && typeof d === "object" && !Array.isArray(d)) ? d : null;
+    if (!S) throw new Error("no pude releer el journal");
+    S.trades = S.trades || [];
+
+    let puestas = 0;
+    for (const o of jPend){
+      if (S.trades.some(t => t.recOpId === o.id)) continue;
+      S.trades.unshift(aTrade(o));
+      puestas++;
+    }
+
+    if (puestas){
+      S._syncTs = Math.max(Date.now(), (S._syncTs || 0) + 1);
+      await cofreLlamar("panel_set", { p_box: cfg.box, p_data: S }, 20000);
+    }
+
+    for (const o of jPend){ metaDe(o.id).enviada = true; seleccion.delete(o.id); guardarMeta(o.id); }
+    await cofreCiclo(true);
+    pintar(); refrescarBotones(); pintarSelTodo();
+
+    el("jEstado").innerHTML = "<b>Listo.</b> " + puestas + " operaciones en tu journal."
+      + "<br>Ábrelo y dale a sincronizar para verlas.";
+  } catch(e){
+    el("jEstado").innerHTML = '<span style="color:var(--bad)">Falló: ' + esc(e.message) + "</span>";
+    el("bJVolcar").disabled = false;
+  }
+}
+
+el("bJCerrar").onclick = () => dlgJournal.close();
+el("bJVolcar").onclick = jVolcar;
+
+// ---------------------------------------------------------------------------
+// Importar historial de NinjaTrader
+// ---------------------------------------------------------------------------
+const dlgHist = el("dlgHist");
+let hResumen = null, hSelCta = new Set(), hSelSim = new Set(), hDias = "30";
+
+function hOpciones(){
+  const o = {};
+  const d = el("hDesde").value, h = el("hHasta").value;
+  if (d) o.desde = d;
+  if (h) o.hasta = h;
+  if (!d && !h) o.dias = hDias;
+  return o;
+}
+
+function hPintarChips(){
+  document.querySelectorAll("[data-hd]").forEach(b =>
+    b.className = "chip" + (!el("hDesde").value && !el("hHasta").value && b.dataset.hd === hDias ? " on" : ""));
+}
+
+function hCaja(txt, n, marcado, alCambiar){
+  const l = document.createElement("label");
+  l.className = "chk";
+  l.innerHTML = '<input type="checkbox" ' + (marcado ? "checked" : "") + '> ' +
+    esc(txt) + ' <span style="color:var(--dim)">(' + n + ')</span>';
+  l.querySelector("input").onchange = e => alCambiar(e.target.checked);
+  return l;
+}
+
+function hPintar(){
+  if (!hResumen) return;
+  el("hResul").style.display = hResumen.total ? "block" : "none";
+  el("hTotal").textContent    = hResumen.total;
+  el("hNCuentas").textContent = hResumen.cuentas.length;
+  el("hNDias").textContent    = hResumen.dias.length;
+
+  const cs = el("hSimbolos"); cs.innerHTML = "";
+  for (const x of hResumen.simbolos)
+    cs.appendChild(hCaja(x.n, x.c, hSelSim.has(x.n), v => {
+      v ? hSelSim.add(x.n) : hSelSim.delete(x.n); hTotalSel(); }));
+
+  const cc = el("hCuentas"); cc.innerHTML = "";
+  for (const x of hResumen.cuentas)
+    cc.appendChild(hCaja(x.n, x.c, hSelCta.has(x.n), v => {
+      v ? hSelCta.add(x.n) : hSelCta.delete(x.n); hTotalSel(); }));
+
+  el("hDias").innerHTML = hResumen.dias.map(d =>
+    '<div style="display:flex;justify-content:space-between;padding:2px 0">' +
+    '<span>' + d.n + '</span><span class="num" style="color:var(--dim)">' + d.c + '</span></div>').join("");
+
+  hTotalSel();
+}
+
+function hTotalSel(){
+  if (!hResumen) return;
+  const n = hResumen.cuentas.filter(c => hSelCta.has(c.n))
+              .reduce((s,c)=> s + c.c, 0);
+  const b = el("bImportar");
+  b.disabled = !hSelCta.size || !hSelSim.size;
+  b.textContent = "Importar " + (hSelCta.size ? "~" + n : "0") + " ejecuciones";
+}
+
+async function hAnalizar(){
+  el("hEstado").textContent = "Leyendo la base de NinjaTrader…";
+  el("hResul").style.display = "none";
+  el("bImportar").disabled = true;
+  try {
+    const r = await fetch(cfg.bridge + "/nt8/resumen", {
+      method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify(hOpciones()) });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || "error desconocido");
+    hResumen = d;
+    hSelCta = new Set(d.cuentas.map(c=>c.n));
+    hSelSim = new Set(d.simbolos.map(x=>x.n));
+    el("hEstado").innerHTML = d.total
+      ? "Encontradas <b>" + d.total + "</b> ejecuciones entre " + d.desde + " y " + d.hasta
+      : "No hay ejecuciones en ese periodo.";
+    hPintar();
+  } catch(e){
+    el("hEstado").innerHTML = '<span style="color:var(--bad)">No se pudo leer: ' + esc(e.message) + "</span>";
+  }
+}
+
+async function hImportar(){
+  const o = hOpciones();
+  o.cuentas  = [...hSelCta];
+  o.simbolos = [...hSelSim];
+  el("bImportar").disabled = true;
+  el("hEstado").textContent = "Importando… puede tardar unos segundos.";
+  try {
+    const r = await fetch(cfg.bridge + "/nt8/importar", {
+      method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(o) });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || "error desconocido");
+    el("hEstado").innerHTML = "Listo: <b>" + d.nuevas + "</b> nuevas, " + d.duplicadas +
+      " ya estaban" + (d.rechazadas ? ", " + d.rechazadas + " rechazadas" : "") + ".";
+    await traerFills(true); refrescar();
+  } catch(e){
+    el("hEstado").innerHTML = '<span style="color:var(--bad)">Falló: ' + esc(e.message) + "</span>";
+  }
+  el("bImportar").disabled = false;
+}
+
+el("bHist").onclick = () => { hPintarChips(); dlgHist.showModal(); if (!hResumen) hAnalizar(); };
+el("bHCerrar").onclick = () => dlgHist.close();
+el("bAnalizar").onclick = hAnalizar;
+el("bImportar").onclick = hImportar;
+document.querySelectorAll("[data-hd]").forEach(b => b.onclick = () => {
+  hDias = b.dataset.hd; el("hDesde").value=""; el("hHasta").value=""; hPintarChips(); hAnalizar(); });
+el("hDesde").onchange = () => { hPintarChips(); hAnalizar(); };
+el("hHasta").onchange = () => { hPintarChips(); hAnalizar(); };
+el("hTodosSim").onclick   = () => { hSelSim = new Set(hResumen ? hResumen.simbolos.map(x=>x.n) : []); hPintar(); };
+el("hTodasCta").onclick   = () => { hSelCta = new Set(hResumen ? hResumen.cuentas.map(x=>x.n) : []); hPintar(); };
+el("hNingunaCta").onclick = () => { hSelCta = new Set(); hPintar(); };
+
+const dlg = el("dlg");
+el("bCfg").onclick = () => {
+  el("cBridge").value=cfg.bridge; el("cToken").value=cfg.token;
+  el("cSbUrl").value=cfg.sbUrl; el("cSbKey").value=cfg.sbKey; el("cBox").value=cfg.box;
+  el("cPuntos").value=cfg.puntos; dlg.showModal();
+};
+el("bCerrar").onclick = () => dlg.close();
+el("bGuardar").onclick = () => {
+  cfg.bridge = el("cBridge").value.trim().replace(/\/+$/,"") || "http://127.0.0.1:8787";
+  cfg.token  = el("cToken").value.trim();
+  cfg.sbUrl  = el("cSbUrl").value.trim();
+  cfg.sbKey  = el("cSbKey").value.trim();
+  cfg.box    = el("cBox").value.trim();
+  cfg.puntos = el("cPuntos").value.trim() || PUNTOS_DEF;
+  guardarCfg(); dlg.close();
+  construir(); refrescar(); refrescarEstado(); traerFills(true).then(refrescar);
+};
+
+el("tol").value = cfg.tol;
+el("fDesde").value = cfg.desde;
+el("fHasta").value = cfg.hasta;
+pintarAuto();
+pintarCofre();
+refrescarEstado();
+
+// Primero lo que haya en el cofre (es lo unico que ve el Mac), luego el
+// puente local si existe (solo en el PC).
+cofreCiclo(false)
+  .then(() => traerFills(true))
+  .then(refrescar)
+  .then(() => cofreCiclo(false));
+
+setInterval(refrescarEstado, 5000);
+setInterval(() => { traerFills(false); refrescarBotones(); }, 3000);
+setInterval(() => cofreCiclo(false), 20000);
+el("bGuardar").addEventListener("click", () => setTimeout(() => cofreCiclo(true), 300));
+</script>
+</body>
+</html>
