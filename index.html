@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bandeja de operaciones</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%2358a6ff%22%20stroke-width%3D%221.9%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M8.8%203.4H6.6A2.1%202.1%200%200%200%204.5%205.5v14a2.1%202.1%200%200%200%202.1%202.1h10.8a2.1%202.1%200%200%200%202.1-2.1v-14a2.1%202.1%200%200%200-2.1-2.1h-2.2%22%2F%3E%3Crect%20x%3D%228.6%22%20y%3D%221.7%22%20width%3D%226.8%22%20height%3D%223.4%22%20rx%3D%221.1%22%20fill%3D%22%2358a6ff%22%20stroke%3D%22none%22%2F%3E%3Cpath%20d%3D%22M7.5%2010.1l1.25%201.25%202.15-2.3%22%2F%3E%3Cpath%20d%3D%22M13.3%2010.1h3.5%22%2F%3E%3Cpath%20d%3D%22M7.5%2014.3l1.25%201.25%202.15-2.3%22%2F%3E%3Cpath%20d%3D%22M13.3%2014.3h3.5%22%2F%3E%3Cpath%20d%3D%22M7.5%2018.5l1.25%201.25%202.15-2.3%22%2F%3E%3Cpath%20d%3D%22M13.3%2018.5h3.5%22%2F%3E%3C%2Fsvg%3E">
+<meta name="theme-color" content="#0d1117">
 <style>
   :root{
     --bg:#0d1117; --panel:#161b22; --panel2:#1c2430; --line:#2a3340; --line2:#1a212b;
@@ -47,7 +49,10 @@
     dialog{width:96vw}
     .dlg-b{padding:14px}
   }
-  h1{font-size:15px;margin:0;font-weight:600;letter-spacing:.3px}
+  h1{font-size:15px;margin:0;font-weight:600;letter-spacing:.3px;
+    display:flex;align-items:center;gap:8px}
+  .logo{display:inline-flex;color:var(--accent);flex:none}
+  .logo svg{width:19px;height:19px;display:block}
   .pills{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
   .pill{display:flex;align-items:center;gap:7px;background:var(--panel2);
     border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:12.5px}
@@ -144,7 +149,7 @@
 
 <header>
   <div class="fila principal">
-    <h1>Bandeja</h1>
+    <h1><span class="logo"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M8.8 3.4H6.6A2.1 2.1 0 0 0 4.5 5.5v14a2.1 2.1 0 0 0 2.1 2.1h10.8a2.1 2.1 0 0 0 2.1-2.1v-14a2.1 2.1 0 0 0-2.1-2.1h-2.2"/><rect x="8.6" y="1.7" width="6.8" height="3.4" rx="1.1" fill="currentColor" stroke="none"/><path d="M7.5 10.1l1.25 1.25 2.15-2.3"/><path d="M13.3 10.1h3.5"/><path d="M7.5 14.3l1.25 1.25 2.15-2.3"/><path d="M13.3 14.3h3.5"/><path d="M7.5 18.5l1.25 1.25 2.15-2.3"/><path d="M13.3 18.5h3.5"/></svg></span>Bandeja</h1>
     <div class="pills" id="pills">
       <span class="pill"><span class="dot" id="dCofre"></span><span id="tCofre">Cofre…</span></span>
       <span class="pill op-pc"><span class="dot" id="dPuente"></span><span id="tPuente">Puente…</span></span>
@@ -245,8 +250,8 @@
     </div>
   </div>
   <div class="dlg-f">
-    <button id="bJCerrar">Cerrar</button>
-    <button class="primary" id="bJVolcar" disabled>Volcar</button>
+    <button class="primary" id="bJCerrar">Cerrar</button>
+    <button id="bJVolcar" style="display:none">Volcar</button>
   </div>
 </dialog>
 
@@ -1024,11 +1029,16 @@ async function volcarAlJournal(lista, silencioso){
     const S = (d && typeof d === "object" && !Array.isArray(d)) ? d : null;
     if (!S) throw new Error("no pude leer tu journal");
     S.trades = S.trades || [];
+    _listasJ = listasDelJournal(S);
 
     let puestas = 0;
+    const usadas = {};   // solo para informar de a donde fue cada cosa
     for (const o of pend){
       if (S.trades.some(t => t.recOpId === o.id)) continue;
-      S.trades.unshift(aTrade(o));
+      const t = aTrade(o);
+      o.cuentas.forEach((c, i) => { usadas[c.cuenta] = t.cuentas[i]; });
+      usadas["· " + o.simbolo] = t.activo;
+      S.trades.unshift(t);
       puestas++;
     }
     if (puestas){
@@ -1038,7 +1048,7 @@ async function volcarAlJournal(lista, silencioso){
     for (const o of pend){ metaDe(o.id).enviada = true; seleccion.delete(o.id); guardarMeta(o.id); }
     await cofreCiclo(true);
     pintar(); refrescarBotones(); pintarSelTodo();
-    return { puestas: puestas };
+    return { puestas: puestas, usadas: usadas };
   } catch(e){
     if (!silencioso) alert("No se pudo volcar: " + e.message);
     return { puestas:0, error:(e && e.message) || "error" };
@@ -1330,50 +1340,117 @@ function duracion(a,b){
 async function jAbrir(){
   jPend = seleccionadas();
   el("jCuerpo").style.display = "none";
-  el("bJVolcar").disabled = true;
+  el("bJVolcar").style.display = "none";
   dlgJournal.showModal();
 
-  if (!cofreListo()){ el("jEstado").innerHTML =
-    '<span style="color:var(--bad)">Configura antes el cofre en Ajustes.</span>'; return; }
-  if (!jPend.length){ el("jEstado").textContent =
-    "No has marcado ninguna operación."; return; }
-
-  el("jEstado").textContent = "Leyendo tu journal…";
-  try {
-    const d = await cofreLlamar("panel_get", { p_box: cfg.box }, 12000);
-    jEstadoRemoto = (d && typeof d === "object" && !Array.isArray(d)) ? d : null;
-    if (!jEstadoRemoto){ el("jEstado").innerHTML =
-      '<span style="color:var(--bad)">Tu journal está vacío o el secreto no es el mismo. ' +
-      'Revisa que sea exactamente el del panel.</span>'; return; }
-
-    const trades = jEstadoRemoto.trades || [];
-    const yaEstan = jPend.filter(o => trades.some(t => t.recOpId === o.id)).length;
-
-    el("jEstado").innerHTML = "Tu journal tiene <b>" + trades.length + "</b> operaciones." +
-      (yaEstan ? "<br><span style=\"color:var(--warn)\">" + yaEstan +
-         " de las marcadas ya estaban volcadas: se saltarán.</span>" : "");
-
-    jMapas();
-    el("jCuerpo").style.display = "block";
-    el("bJVolcar").disabled = false;
-    el("bJVolcar").textContent = "Volcar " + (jPend.length - yaEstan) + " operaciones";
-  } catch(e){
-    el("jEstado").innerHTML = '<span style="color:var(--bad)">No pude leer el journal: '
-      + esc(e.message) + "</span>";
+  if (!cofreListo()){
+    el("jEstado").innerHTML =
+      '<span style="color:var(--bad)">Configura antes el cofre en Ajustes.</span>';
+    return;
   }
+  if (!jPend.length){
+    el("jEstado").textContent = "No has marcado ninguna operación.";
+    return;
+  }
+
+  el("jEstado").textContent = "Volcando " + jPend.length + " operaciones…";
+  const r = await volcarAlJournal(jPend, false);
+
+  if (r.error){
+    el("jEstado").innerHTML = '<span style="color:var(--bad)">Falló: ' + esc(r.error) + "</span>";
+    return;
+  }
+
+  // Informativo: a donde ha ido cada cosa. No hay nada que confirmar.
+  const filas = Object.keys(r.usadas || {}).sort().map(k =>
+    '<div style="display:flex;gap:10px;align-items:center;margin-bottom:4px">'
+    + '<span class="num" style="min-width:190px;font-size:12.5px;color:var(--dim)">'
+    + esc(k.replace(/^· /, "")) + '</span><span style="color:var(--dim)">→</span>'
+    + '<span style="font-size:12.5px">' + esc(r.usadas[k]) + "</span></div>").join("");
+
+  el("jEstado").innerHTML =
+    "<b>" + r.puestas + "</b> operaciones volcadas a tu journal."
+    + (jPend.length - r.puestas ? '<br><span style="color:var(--warn)">'
+        + (jPend.length - r.puestas) + " ya estaban y se han saltado.</span>" : "")
+    + "<br><br>Ábrelo y dale a sincronizar para verlas."
+    + (filas ? '<div style="margin-top:16px"><div style="font-size:12px;color:var(--dim);'
+        + 'margin-bottom:7px">CUENTAS Y ACTIVOS USADOS</div>' + filas + "</div>" : "");
 }
+
 
 // NinjaTrader llama a las cuentas PAAPEX6115870000016 y en el journal se
 // llaman "PA Apex 16": el numero real va al final, tras los ceros de relleno.
-// Esto reduce las dos formas a la misma clave para poder emparejarlas solas.
+// Esto reduce las dos formas a la misma clave para poder emparejarlas.
 function claveCuenta(nombre){
   const s = String(nombre || "").toUpperCase().replace(/[\s_\-.]/g, "");
   const m = s.match(/^(PAAPEX|APEX)0*(\d+)$/);
   if (!m) return s;
-  const trozos = m[2].split(/0{2,}/);           // "6115870000016" -> ["611587","16"]
+  const trozos = m[2].split(/0{2,}/);
   const num = trozos[trozos.length - 1] || m[2];
   return m[1] + String(parseInt(num, 10));
 }
+
+// A partir del nombre del broker saca el nombre que usas tu en el journal.
+//   PAAPEX6115870000016 -> "PA Apex 16"   (fondeada)
+//   APEX61158700000108  -> "Apex 108"     (evaluacion)
+//   cualquier cosa de MetaTrader -> tu unica cuenta de MT5
+function nombreBonito(cuentaNT8){
+  const s = String(cuentaNT8 || "").toUpperCase().replace(/[\s_\-.]/g, "");
+  const m = s.match(/^(PAAPEX|APEX)0*(\d+)$/);
+  if (!m) return null;
+  const trozos = m[2].split(/0{2,}/);
+  const num = parseInt(trozos[trozos.length - 1] || m[2], 10);
+  if (!Number.isFinite(num)) return null;
+  return (m[1] === "PAAPEX" ? "PA Apex " : "Apex ") + num;
+}
+
+// La cuenta de MetaTrader: una sola y por mucho tiempo.
+function cuentaMT5(cuentasJ){
+  return cuentasJ.find(c => /e8m/i.test(c))
+      || cuentasJ.find(c => /200\s*k/i.test(c))
+      || null;
+}
+
+// Decide sola a que cuenta del journal va cada cuenta del broker.
+// Lo que hayas puesto a mano manda siempre.
+function resolverCuenta(cuentaNT8, origen, cuentasJ){
+  if (cfg.mapCuentas[cuentaNT8]) return cfg.mapCuentas[cuentaNT8];
+
+  const clave = claveCuenta(cuentaNT8);
+  const porClave = cuentasJ.find(c => claveCuenta(c) === clave);
+  if (porClave) return porClave;
+
+  const bonito = nombreBonito(cuentaNT8);
+  if (bonito){
+    const exacto = cuentasJ.find(c => c.toLowerCase() === bonito.toLowerCase());
+    return exacto || bonito;
+  }
+
+  if (origen === "mt5"){
+    const mt5 = cuentaMT5(cuentasJ);
+    if (mt5) return mt5;
+  }
+  return cuentaNT8;
+}
+
+function resolverActivo(simbolo, contrato, activosJ){
+  if (cfg.mapActivos[simbolo]) return cfg.mapActivos[simbolo];
+  const empieza = activosJ.find(a => a.toUpperCase().indexOf(simbolo.toUpperCase()) === 0);
+  return empieza || activoLargo(simbolo, contrato);
+}
+
+// Cuentas y activos tal y como estan en tu journal.
+function listasDelJournal(S){
+  const cuentas = (S.accountsAll || [])
+    .map(a => (typeof a === "string") ? a : (a.nombre || a.name || a.id))
+    .filter(Boolean);
+  const activos = Object.keys((S.config && S.config.usd) || {});
+  for (const t of (S.trades || []).slice(0, 600))
+    if (t.activo && activos.indexOf(t.activo) < 0) activos.push(t.activo);
+  return { cuentas: cuentas, activos: activos };
+}
+
+let _listasJ = { cuentas:[], activos:[] };
 
 function jMapas(){
   const S = jEstadoRemoto || {};
@@ -1439,13 +1516,12 @@ function aTrade(o){
   const m = metaDe(o.id);
   const fecha = iso(o.t0);
   const nCuentas = o.cuentas.length || 1;
-  const cuentas = o.cuentas.map(t => (cfg.mapCuentas && cfg.mapCuentas[t.cuenta]) || t.cuenta);
+  const cuentas = o.cuentas.map(t => resolverCuenta(t.cuenta, o.origen, _listasJ.cuentas));
   const resPC = {};
-  for (const t of o.cuentas)
-    resPC[(cfg.mapCuentas && cfg.mapCuentas[t.cuenta]) || t.cuenta] = Number(t.neto.toFixed(2));
+  o.cuentas.forEach((t, i) => { resPC[cuentas[i]] = Number(t.neto.toFixed(2)); });
 
   const contrato = (o.cuentas[0] && o.cuentas[0].contrato) || o.simbolo;
-  const activo = (cfg.mapActivos && cfg.mapActivos[o.simbolo]) || activoLargo(o.simbolo, contrato);
+  const activo = resolverActivo(o.simbolo, contrato, _listasJ.activos);
 
   return {
     id: uid(),
