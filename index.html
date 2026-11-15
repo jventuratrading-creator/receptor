@@ -348,7 +348,7 @@
     <div class="fld"><label>Corrección de hora de MetaTrader (minutos)</label>
       <input type="number" id="cOff" step="15" style="width:110px">
       <div class="hint">MetaTrader manda la hora del servidor del broker, no la tuya.
-        Con <b>-60</b> resta una hora a las operaciones de MetaTrader antes de agrupar.
+        Con <b>-120</b> resta dos horas a las operaciones de MetaTrader antes de agrupar.
         Si algún cambio de horario lo descuadra, ajústalo aquí.</div></div>
     <div class="fld"><label>Valor del punto en $ (solo si la fuente no manda el resultado)</label>
       <input type="text" id="cPuntos">
@@ -362,7 +362,7 @@
 </dialog>
 
 <script>
-const VER = "1.4";
+const VER = "1.8";
 "use strict";
 
 const PUNTOS_DEF = "ES=50,MES=5,NQ=20,MNQ=2,YM=5,MYM=0.5,RTY=50,M2K=5,"
@@ -399,7 +399,8 @@ const cfg = (function(){
     vTol   : 2,
     // MetaTrader manda la hora del servidor del broker, que va adelantada.
     // Estos minutos se SUMAN a las horas de origen mt5 (-60 = una hora menos).
-    offMin : Number.isFinite(g.offMin) ? g.offMin : -60,
+    offMin : Number.isFinite(g.offMin) && g.vOff === 2 ? g.offMin : -120,
+    vOff   : 2,
     rango  : g.rango || "todo",
     desde  : g.desde || "", hasta: g.hasta || "",
     // Por defecto solo NinjaTrader. MetaTrader y los fills de prueba del panel,
@@ -677,7 +678,7 @@ async function traerFills(desdeCero){
 // (MNQ en NinjaTrader, NAS100 o USTEC en MetaTrader) y para agrupar da igual
 // cual sea el contrato concreto: lo que importa es que sea el mismo mercado.
 const FAMILIAS = [
-  ["NASDAQ",  /^(M?NQ|NAS100|USTEC|US100|NDX|NAS|USATEC|NASDAQ)/],
+  ["NASDAQ",  /^(M?NQ|NSDQ|NAS100|NAS|USTEC|US100|USATEC|NDX|NASDAQ)/],
   ["SP500",   /^(M?ES|SPX500|US500|SP500|SPX|SP)/],
   ["DOW",     /^(M?YM|US30|DJI|DOW)/],
   ["RUSSELL", /^(RTY|M2K|US2000)/],
@@ -855,6 +856,8 @@ function fusionarGrupos(lista){
       if (c.tUlt > mejor){ mejor = c.tUlt; destino = c; }
     }
 
+    for (const c of o.cuentas) if (!c.org) c.org = o.origen;
+
     if (!destino){
       const n = Object.assign({}, o, { cuentas: o.cuentas.slice() });
       n.tUlt = o.t0;
@@ -878,7 +881,10 @@ function recalcular(g){
   // El lotaje NO se suma: en una replicada todas las cuentas van con el mismo
   // tamano, asi que lo que vale es el lote de UNA cuenta (la mediana aguanta
   // que alguna cuenta vaya con mas o con menos).
-  g.qty   = mediana(g.cuentas.map(t => t.qty || 0));
+  // El lote se toma de las cuentas de futuros (Apex). MetaTrader va en lotes
+  // de CFD, que no son contratos, y mezclarlos falsea el numero.
+  const propias = g.cuentas.filter(t => !esMT5(t));
+  g.qty   = mediana((propias.length ? propias : g.cuentas).map(t => t.qty || 0));
   g.qtyTot= g.cuentas.reduce((s,t)=> s + (t.qty||0), 0);
   g.bruto = g.cuentas.reduce((s,t)=> s + (t.bruto||0), 0);
   g.com   = g.cuentas.reduce((s,t)=> s + (t.com||0), 0);
@@ -1060,8 +1066,9 @@ function detalle(o, m){
   let filas = "";
   for (const t of o.cuentas.slice().sort((a,b)=> b.neto - a.neto)){
     filas += '<tr>' +
-      '<td><b>' + esc(t.nombre) + '</b>' +
-        (t.nombre !== t.cuenta ? ' <span class="tag">' + esc(t.cuenta) + '</span>' : '') + '</td>' +
+      '<td><b>' + esc(nombreCuenta(t)) + '</b>' +
+        (esMT5(t) ? ' <span class="tag src">mt5</span>' : '') +
+        '  <span class="tag">' + esc(t.cuenta) + '</span></td>' +
       '<td class="num">' + esc(t.contrato) + '</td>' +
       '<td class="r num">' + fmt(t.qty, t.qty%1 ? 2 : 0) + '</td>' +
       '<td class="r num">' + fmt(t.pEnt,2) + '</td>' +
@@ -1076,7 +1083,10 @@ function detalle(o, m){
   td.innerHTML =
     '<div class="inner">' +
       '<h4>' + o.cuentas.length + (o.cuentas.length===1?" cuenta":" cuentas") + ' · ' +
-        esc(etiqueta(o.simbolo)) + ' ' + (o.dir==="Long"?"largo":"corto") + ' · entrada ' + hhmmss(o.t0) +
+        esc(etiqueta(o.simbolo)) + ' ' + (o.dir==="Long"?"largo":"corto") +
+        ' · lote ' + fmt(o.qty, o.qty%1 ? 2 : 0) +
+        (o.cuentas.some(esMT5) ? ' (de las de futuros)' : '') +
+        ' · entrada ' + hhmmss(o.t0) +
         (o.abierta ? "" : ' · salida ' + hhmmss(o.t1)) + '</h4>' +
       '<table><thead><tr><th>Cuenta</th><th>Contrato</th><th class="r">Cant.</th>' +
       '<th class="r">Entrada</th><th class="r">Salida</th><th class="r">Puntos</th>' +
@@ -1565,7 +1575,7 @@ function jVistaPrevia(tradesJournal){
 
   html += '<div class="prev">';
   for (const o of iran.slice().sort((a,b)=> b.t0 - a.t0)){
-    const nom = o.cuentas.map(c => resolverCuenta(c.cuenta, o.origen, _listasJ.cuentas));
+    const nom = o.cuentas.map(c => resolverCuenta(c.cuenta, c.org || o.origen, _listasJ.cuentas));
     html += '<div class="pop"><div class="pop-h">'
       + '<span class="hh num">' + iso(o.t0).slice(8,10) + "/" + iso(o.t0).slice(5,7)
       + " " + hhmmss(o.t0) + "</span>"
@@ -1617,6 +1627,20 @@ function nombreBonito(cuentaNT8){
   return (m[1] === "PAAPEX" ? "PA Apex " : "Apex ") + num;
 }
 
+// La cuenta de MetaTrader es la de 200K de E8 Markets. El broker la llama
+// "Paper Trading <numero>", pero es una cuenta real y fondeada.
+const NOMBRE_MT5 = "200K E8M";
+function esMT5(t){
+  if (!t) return false;
+  if (t.org === "mt5") return true;
+  return /paper\s*trading|e8m|e8\s*markets|200\s*k/i.test(String(t.cuenta || t.nombre || ""));
+}
+// Nombre con el que se ve una cuenta en la Bandeja.
+function nombreCuenta(t){
+  if (esMT5(t)) return NOMBRE_MT5;
+  return nombreBonito(t.cuenta) || t.nombre || t.cuenta;
+}
+
 // La cuenta de MetaTrader: una sola y por mucho tiempo.
 function cuentaMT5(cuentasJ){
   return cuentasJ.find(c => /e8m/i.test(c))
@@ -1639,9 +1663,8 @@ function resolverCuenta(cuentaNT8, origen, cuentasJ){
     return exacto || bonito;
   }
 
-  if (origen === "mt5"){
-    const mt5 = cuentaMT5(cuentasJ);
-    if (mt5) return mt5;
+  if (origen === "mt5" || esMT5({ cuenta:cuentaNT8 })){
+    return cuentaMT5(cuentasJ) || NOMBRE_MT5;
   }
   return cuentaNT8;
 }
@@ -1731,7 +1754,7 @@ function aTrade(o){
   const m = metaDe(o.id);
   const fecha = iso(o.t0);
   const nCuentas = o.cuentas.length || 1;
-  const cuentas = o.cuentas.map(t => resolverCuenta(t.cuenta, o.origen, _listasJ.cuentas));
+  const cuentas = o.cuentas.map(t => resolverCuenta(t.cuenta, t.org || o.origen, _listasJ.cuentas));
   const resPC = {};
   o.cuentas.forEach((t, i) => { resPC[cuentas[i]] = Number(t.neto.toFixed(2)); });
 
