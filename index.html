@@ -354,7 +354,7 @@
     <div class="fld"><label>Corrección de hora de MetaTrader (minutos)</label>
       <input type="number" id="cOff" step="15" style="width:110px">
       <div class="hint">MetaTrader manda la hora del servidor del broker, no la tuya.
-        Con <b>-120</b> resta dos horas a las operaciones de MetaTrader antes de agrupar.
+        Con <b>-60</b> resta una hora a las operaciones de MetaTrader antes de agrupar.
         Si algún cambio de horario lo descuadra, ajústalo aquí.</div></div>
     <div class="fld"><label>Valor del punto en $ (solo si la fuente no manda el resultado)</label>
       <input type="text" id="cPuntos">
@@ -368,7 +368,7 @@
 </dialog>
 
 <script>
-const VER = "1.9";
+const VER = "2.0";
 "use strict";
 
 const PUNTOS_DEF = "ES=50,MES=5,NQ=20,MNQ=2,YM=5,MYM=0.5,RTY=50,M2K=5,"
@@ -405,8 +405,8 @@ const cfg = (function(){
     vTol   : 2,
     // MetaTrader manda la hora del servidor del broker, que va adelantada.
     // Estos minutos se SUMAN a las horas de origen mt5 (-60 = una hora menos).
-    offMin : Number.isFinite(g.offMin) && g.vOff === 2 ? g.offMin : -120,
-    vOff   : 2,
+    offMin : Number.isFinite(g.offMin) && g.vOff === 3 ? g.offMin : -60,
+    vOff   : 3,
     rango  : g.rango || "todo",
     desde  : g.desde || "", hasta: g.hasta || "",
     // Por defecto solo NinjaTrader. MetaTrader y los fills de prueba del panel,
