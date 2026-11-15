@@ -345,6 +345,12 @@
       <div class="hint">El receptor usa tu misma puerta segura (panel_get / panel_set)
         pero guarda en una fila aparte, con el sufijo <b>:receptor</b>.
         No toca los datos de tu journal.</div></div>
+    <div class="fld"><label>Nombres de cuenta en el journal</label>
+      <button id="bArreglar">Arreglar los nombres ya volcados</button>
+      <div class="hint">Las operaciones que volcaste antes llevan dentro el nombre
+        que les pone el bróker ("Paper Trading…", "PAAPEX6115…"). Esto las renombra
+        en tu journal a 200K E8M, PA Apex 16, Apex 108… Antes de escribir se te
+        descarga una copia de seguridad.</div></div>
     <div class="fld"><label>Historial guardado</label>
       <button id="bVaciar">Vaciar el historial guardado</button>
       <div class="hint">Borra las operaciones que hay guardadas en el cofre y en este
@@ -368,7 +374,7 @@
 </dialog>
 
 <script>
-const VER = "2.0";
+const VER = "2.1";
 "use strict";
 
 const PUNTOS_DEF = "ES=50,MES=5,NQ=20,MNQ=2,YM=5,MYM=0.5,RTY=50,M2K=5,"
@@ -1962,6 +1968,61 @@ el("bCfg").onclick = () => {
   el("cPuntos").value=cfg.puntos; el("cOff").value=cfg.offMin; dlg.showModal();
 };
 el("bCerrar").onclick = () => dlg.close();
+el("bArreglar").onclick = async () => {
+  const b = el("bArreglar");
+  if (!cofreListo()){ b.textContent = "Configura antes el cofre"; return; }
+  b.disabled = true; b.textContent = "Leyendo el journal…";
+  try {
+    const S = await cofreLlamar("panel_get", { p_box: cfg.box }, 15000);
+    if (!S || typeof S !== "object" || Array.isArray(S)) throw new Error("journal vacío");
+    const trades = S.trades || [];
+
+    let tocados = 0;
+    const cambios = {};
+    for (const t of trades){
+      let cambio = false;
+      if (Array.isArray(t.cuentas)){
+        const nuevas = t.cuentas.map(c => {
+          const n = nombreCuenta({ cuenta:c, nombre:c });
+          if (n !== c){ cambios[c] = n; cambio = true; }
+          return n;
+        });
+        if (cambio){ t.cuentas = nuevas; t.cuenta = nuevas.join(", "); }
+      }
+      if (t.resPorCuenta && typeof t.resPorCuenta === "object"){
+        const r = {};
+        for (const k of Object.keys(t.resPorCuenta)){
+          const n = nombreCuenta({ cuenta:k, nombre:k });
+          if (n !== k){ cambios[k] = n; cambio = true; }
+          r[n] = t.resPorCuenta[k];
+        }
+        if (cambio) t.resPorCuenta = r;
+      }
+      if (cambio) tocados++;
+    }
+
+    if (!tocados){ b.textContent = "No hay nada que renombrar"; return; }
+
+    bajar("journal-copia-" + iso(Date.now()) + ".json", JSON.stringify(S), "application/json");
+    const lista = Object.keys(cambios).map(k => k + "  ->  " + cambios[k]).join("\n");
+    if (!confirm("Se van a renombrar " + tocados + " operaciones de tu journal:\n\n"
+        + lista + "\n\nYa se te ha descargado una copia de seguridad. ¿Seguir?")){
+      b.disabled = false; b.textContent = "Arreglar los nombres ya volcados"; return;
+    }
+
+    b.textContent = "Escribiendo…";
+    if (Array.isArray(S.accountsAll))
+      S.accountsAll = S.accountsAll.map(a => (typeof a === "string")
+        ? nombreCuenta({ cuenta:a, nombre:a }) : a)
+        .filter((a,i,v) => v.indexOf(a) === i);
+    await cofreLlamar("panel_set", { p_box: cfg.box, p_data: S }, 20000);
+    b.textContent = tocados + " operaciones renombradas";
+  } catch(e){
+    b.disabled = false;
+    b.textContent = "No se pudo: " + (e.message || "error");
+  }
+};
+
 el("bVaciar").onclick = async () => {
   const n = Object.keys(opsRemotas).length;
   if (!confirm("Se van a borrar " + n + " operaciones guardadas, en todos los dispositivos.\n\n"
