@@ -202,7 +202,7 @@
       <span id="origenes"></span>
       <span class="sep"></span>
       <label class="lbl" title="Dos entradas del mismo símbolo y dirección dentro de este margen, con las posiciones solapadas, cuentan como una sola operación replicada">Margen réplica</label>
-      <input type="number" id="tol" value="3" min="0" max="120" step="0.5" style="width:58px"><span class="lbl">min</span>
+      <input type="number" id="tol" value="20" min="0" max="240" step="1" style="width:58px"><span class="lbl">min</span>
     </div>
 
     <div class="fila">
@@ -362,7 +362,7 @@
 </dialog>
 
 <script>
-const VER = "1.3";
+const VER = "1.4";
 "use strict";
 
 const PUNTOS_DEF = "ES=50,MES=5,NQ=20,MNQ=2,YM=5,MYM=0.5,RTY=50,M2K=5,"
@@ -395,8 +395,8 @@ const cfg = (function(){
     mapasTs   : g.mapasTs || 0,
     // Margen de replica EN MINUTOS: a veces entras con otro grupo de cuentas
     // unos minutos despues y sigue siendo la misma operacion.
-    tolMin : Number.isFinite(g.tolMin) ? g.tolMin
-             : (Number.isFinite(g.tol) ? Math.max(3, g.tol / 60) : 3),
+    tolMin : Number.isFinite(g.tolMin) && g.vTol === 2 ? g.tolMin : 20,
+    vTol   : 2,
     // MetaTrader manda la hora del servidor del broker, que va adelantada.
     // Estos minutos se SUMAN a las horas de origen mt5 (-60 = una hora menos).
     offMin : Number.isFinite(g.offMin) ? g.offMin : -60,
@@ -829,31 +829,43 @@ function mediana(a){
 // repiten cuenta.
 function fusionarGrupos(lista){
   const tol = (cfg.tolMin || 0) * 60000;
-  if (!tol) return lista.slice().sort((a,b)=> b.t0 - a.t0);
+  if (!tol){
+    const solas = lista.slice();
+    for (const o of solas) recalcular(o);     // el lote tambien aqui es por cuenta
+    return solas.sort((a,b)=> b.t0 - a.t0);
+  }
 
   const orden = lista.slice().sort((a,b)=> a.t0 - b.t0);
   const fuera = [];
 
   for (const o of orden){
-    let destino = null;
+    // Se engancha a la ULTIMA entrada del grupo, no a la primera: asi una
+    // operacion con 9 cuentas que vas metiendo de 5 en 5 minutos acaba junta,
+    // aunque entre la primera y la ultima pase mas que el margen.
+    let destino = null, mejor = -Infinity;
     for (let i = fuera.length - 1; i >= 0; i--){
       const c = fuera[i];
-      if (o.t0 - c.t0 > tol + 60000) break;
-      // Aqui NO se exige la misma plataforma: la misma entrada puesta en Apex
-      // y en MetaTrader es una sola operacion con replicas en las dos.
+      // NO se exige la misma plataforma ni el mismo contrato: la misma entrada
+      // puesta en Apex y en MetaTrader es una sola operacion con replicas en
+      // las dos, y MetaTrader cuenta como una cuenta mas.
       if (familia(c.simbolo) !== familia(o.simbolo) || c.dir !== o.dir) continue;
-      if (Math.abs(c.t0 - o.t0) > tol) continue;
-      if (o.t0 > c.t1 || c.t0 > o.t1) continue;          // no coincidieron abiertas
-      const repes = o.cuentas.some(x => c.cuentas.some(y => y.cuenta === x.cuenta));
-      if (repes) continue;                                // misma cuenta dos veces: no
-      destino = c; break;
+      if (o.t0 - c.tUlt > tol) continue;                 // fuera del margen
+      if (o.cuentas.some(x => c.cuentas.some(y => y.cuenta === x.cuenta)))
+        continue;                                        // misma cuenta dos veces: no
+      if (c.tUlt > mejor){ mejor = c.tUlt; destino = c; }
     }
 
-    if (!destino){ fuera.push(Object.assign({}, o, { cuentas: o.cuentas.slice() })); continue; }
+    if (!destino){
+      const n = Object.assign({}, o, { cuentas: o.cuentas.slice() });
+      n.tUlt = o.t0;
+      fuera.push(n);
+      continue;
+    }
 
     destino.cuentas = destino.cuentas.concat(o.cuentas);
-    destino.t0 = Math.min(destino.t0, o.t0);
-    destino.t1 = Math.max(destino.t1, o.t1);
+    destino.t0   = Math.min(destino.t0, o.t0);
+    destino.t1   = Math.max(destino.t1, o.t1);
+    destino.tUlt = Math.max(destino.tUlt, o.t0);
     destino.abierta = destino.abierta || o.abierta;
     recalcular(destino);
   }
@@ -863,14 +875,18 @@ function fusionarGrupos(lista){
 }
 
 function recalcular(g){
-  g.qty   = g.cuentas.reduce((s,t)=> s + (t.qty||0), 0);
+  // El lotaje NO se suma: en una replicada todas las cuentas van con el mismo
+  // tamano, asi que lo que vale es el lote de UNA cuenta (la mediana aguanta
+  // que alguna cuenta vaya con mas o con menos).
+  g.qty   = mediana(g.cuentas.map(t => t.qty || 0));
+  g.qtyTot= g.cuentas.reduce((s,t)=> s + (t.qty||0), 0);
   g.bruto = g.cuentas.reduce((s,t)=> s + (t.bruto||0), 0);
   g.com   = g.cuentas.reduce((s,t)=> s + (t.com||0), 0);
   g.neto  = g.cuentas.reduce((s,t)=> s + (t.neto||0), 0);
   const pe = g.cuentas.reduce((s,t)=> s + (t.pEnt||0)*(t.qty||0), 0);
   const ps = g.cuentas.reduce((s,t)=> s + (t.pSal||0)*(t.qty||0), 0);
-  g.pEnt = g.qty ? pe/g.qty : g.pEnt;
-  g.pSal = g.qty ? ps/g.qty : g.pSal;
+  g.pEnt = g.qtyTot ? pe/g.qtyTot : g.pEnt;
+  g.pSal = g.qtyTot ? ps/g.qtyTot : g.pSal;
   g.porCuenta = mediana(g.cuentas.map(t=> t.neto || 0));
   // El identificador se ancla a la entrada mas temprana, para que no cambie
   // al reagrupar y no se vuelva a volcar lo ya enviado.
@@ -1734,7 +1750,7 @@ function aTrade(o){
     dur: o.abierta ? undefined : duracion(o.t0, o.t1),
     sesion: (el("jSesion").value || "").trim() || undefined,
     direccion: o.dir === "Long" ? "Largo" : "Corto",
-    unidades: Number((o.qty / nCuentas).toFixed(2)),
+    unidades: Number((o.qty || 0).toFixed(2)),
     entrada: Number(o.pEnt.toFixed(4)),
     salida: o.abierta ? undefined : Number(o.pSal.toFixed(4)),
     replica: nCuentas,
