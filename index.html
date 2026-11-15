@@ -351,6 +351,11 @@ const cfg = (function(){
     // Momento en que se encendio el automatico. Solo se envian solas las
     // operaciones vistas DESPUES de ese instante.
     autoDesde : g.autoDesde || 0,
+    // Emparejamiento de cuentas y activos con el journal. Viaja en el cofre:
+    // se configura una vez y vale para todos los dispositivos.
+    mapCuentas: g.mapCuentas || {},
+    mapActivos: g.mapActivos || {},
+    mapasTs   : g.mapasTs || 0,
     tol    : Number.isFinite(g.tol) ? g.tol : 5,
     rango  : g.rango || "todo",
     desde  : g.desde || "", hasta: g.hasta || "",
@@ -469,7 +474,8 @@ async function cofreEscribir(estado){
 function estadoLocal(){
   const opsG = {};
   for (const o of ops) opsG[o.id] = comprimir(o);
-  return { v:1, ts:Date.now(), ops:opsG, meta:meta };
+  return { v:1, ts:Date.now(), ops:opsG, meta:meta,
+    mapas: { cuentas:cfg.mapCuentas, activos:cfg.mapActivos, ts:cfg.mapasTs } };
 }
 
 function comprimir(o){
@@ -494,6 +500,15 @@ function fusionar(remoto){
       if (!opsRemotas[id]){ opsRemotas[id] = remoto.ops[id]; cambio = true; }
     }
   }
+  // El emparejamiento mas reciente gana, venga del equipo que venga.
+  if (remoto.mapas && (remoto.mapas.ts || 0) > (cfg.mapasTs || 0)){
+    cfg.mapCuentas = remoto.mapas.cuentas || {};
+    cfg.mapActivos = remoto.mapas.activos || {};
+    cfg.mapasTs    = remoto.mapas.ts;
+    guardarCfg();
+    cambio = true;
+  }
+
   if (remoto.meta){
     for (const id of Object.keys(remoto.meta)){
       const r = remoto.meta[id], l = meta[id];
@@ -514,13 +529,15 @@ async function cofreCiclo(forzar){
 
     const mio = estadoLocal();
     const distinto = !remoto || JSON.stringify(remoto.ops||{}) !== JSON.stringify(mio.ops)
-                             || JSON.stringify(remoto.meta||{}) !== JSON.stringify(mio.meta);
+                             || JSON.stringify(remoto.meta||{}) !== JSON.stringify(mio.meta)
+                             || JSON.stringify((remoto.mapas||{}).cuentas||{}) !== JSON.stringify(cfg.mapCuentas)
+                             || JSON.stringify((remoto.mapas||{}).activos||{}) !== JSON.stringify(cfg.mapActivos);
 
     if (forzar || cofreSucio || distinto){
       // Lo que subimos es la union de lo nuestro y lo que ya habia.
       const union = { v:1, ts:Date.now(),
         ops: Object.assign({}, remoto && remoto.ops || {}, mio.ops),
-        meta: mio.meta };
+        meta: mio.meta, mapas: mio.mapas };
       await cofreEscribir(union);
       cofreSucio = false;
     }
@@ -1346,6 +1363,18 @@ async function jAbrir(){
   }
 }
 
+// NinjaTrader llama a las cuentas PAAPEX6115870000016 y en el journal se
+// llaman "PA Apex 16": el numero real va al final, tras los ceros de relleno.
+// Esto reduce las dos formas a la misma clave para poder emparejarlas solas.
+function claveCuenta(nombre){
+  const s = String(nombre || "").toUpperCase().replace(/[\s_\-.]/g, "");
+  const m = s.match(/^(PAAPEX|APEX)0*(\d+)$/);
+  if (!m) return s;
+  const trozos = m[2].split(/0{2,}/);           // "6115870000016" -> ["611587","16"]
+  const num = trozos[trozos.length - 1] || m[2];
+  return m[1] + String(parseInt(num, 10));
+}
+
 function jMapas(){
   const S = jEstadoRemoto || {};
   const cuentasJ = (S.accountsAll || []).map(a => (typeof a === "string") ? a : (a.nombre || a.name || a.id))
@@ -1354,14 +1383,24 @@ function jMapas(){
   for (const t of (S.trades || []).slice(0,400))
     if (t.activo && activosJ.indexOf(t.activo) < 0) activosJ.push(t.activo);
 
-  cfg.mapCuentas = cfg.mapCuentas || {};
-  cfg.mapActivos = cfg.mapActivos || {};
-
   const cuentasR = [...new Set(jPend.flatMap(o => o.cuentas.map(t => t.cuenta)))].sort();
   const activosR = [...new Set(jPend.map(o => o.simbolo))].sort();
 
+  // Emparejado automatico por numero de cuenta.
+  const porClave = {};
+  for (const c of cuentasJ) porClave[claveCuenta(c)] = c;
+
   el("jCuentas").innerHTML = "";
-  for (const c of cuentasR) el("jCuentas").appendChild(jFila(c, cuentasJ, cfg.mapCuentas));
+  for (const c of cuentasR){
+    if (!cfg.mapCuentas[c]){
+      const sug = porClave[claveCuenta(c)];
+      if (sug) cfg.mapCuentas[c] = sug;
+    }
+    el("jCuentas").appendChild(jFila(c, cuentasJ, cfg.mapCuentas));
+  }
+  cfg.mapasTs = cfg.mapasTs || Date.now();
+  guardarCfg();
+  cofreSucio = true;
   el("jActivos").innerHTML = "";
   for (const a of activosR){
     const sug = activosJ.find(x => x.indexOf(a) === 0);
@@ -1378,10 +1417,20 @@ function jFila(clave, opciones, mapa){
   const libres = [...new Set([mapa[clave] || clave].concat(opciones))].filter(Boolean);
   sel.innerHTML = libres.map(v =>
     '<option' + (v === (mapa[clave] || clave) ? " selected" : "") + '>' + esc(v) + "</option>").join("");
-  sel.onchange = () => { mapa[clave] = sel.value; guardarCfg(); };
+  sel.onchange = () => {
+    mapa[clave] = sel.value;
+    cfg.mapasTs = Date.now();
+    guardarCfg();
+    cofreSucio = true;
+    cofreCiclo(true);
+  };
   if (!mapa[clave]) mapa[clave] = sel.value;
-  d.innerHTML = '<span class="num" style="min-width:200px;font-size:12.5px">'
-    + esc(clave) + '</span><span style="color:var(--dim)">→</span>';
+  const sinPareja = (mapa[clave] || clave) === clave && opciones.indexOf(clave) < 0;
+  d.innerHTML = '<span class="num" style="min-width:190px;font-size:12.5px'
+    + (sinPareja ? ';color:var(--warn)' : '') + '" title="'
+    + (sinPareja ? 'No encontré una cuenta equivalente en tu journal: elígela a mano' : '')
+    + '">' + esc(clave) + (sinPareja ? ' ⚠' : '')
+    + '</span><span style="color:var(--dim)">→</span>';
   d.appendChild(sel);
   return d;
 }
