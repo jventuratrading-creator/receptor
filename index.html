@@ -374,7 +374,7 @@
 </dialog>
 
 <script>
-const VER = "2.2";
+const VER = "2.3";
 "use strict";
 
 const PUNTOS_DEF = "ES=50,MES=5,NQ=20,MNQ=2,YM=5,MYM=0.5,RTY=50,M2K=5,"
@@ -388,7 +388,9 @@ const cfg = (function(){
   try { g = JSON.parse(localStorage.getItem("receptor.cfg") || "{}"); } catch(e){}
   // Si la pagina la sirve el propio puente (aunque sea desde otro equipo de la
   // red), ese es el puente. Solo al abrirla como fichero suelto hay que adivinar.
-  const servida = /^https?:$/.test(location.protocol) && location.origin;
+  // El puente siempre va por http: si la pagina es https (Vercel) no puede ser
+  // ella el puente, por mucho que se sirva desde algun sitio.
+  const servida = location.protocol === "http:" && location.origin;
   return {
     bridge : g.bridge || (servida ? location.origin : "http://127.0.0.1:8787"),
     token  : g.token  || "",
@@ -662,11 +664,31 @@ function fmtDur(s){
   return Math.floor(s/86400) + "d " + Math.floor((s%86400)/3600) + "h";
 }
 
+// Una pagina https no puede llamar a un programa http de tu propio equipo: el
+// navegador lo bloquea. Ahi no hay puente que valga, y no es una averia.
+function puenteAlcanzable(){
+  return !(location.protocol === "https:" && /^http:/i.test(cfg.bridge));
+}
+
 async function refrescarEstado(){
+  const dP = el("dPuente"), tP = el("tPuente");
+  const dN0 = el("dNt8"), tN0 = el("tNt8");
+
+  if (!puenteAlcanzable()){
+    dP.className = "dot"; tP.textContent = "Puente · solo en el PC";
+    dN0.className = "dot"; tN0.textContent = "NinjaTrader · solo en el PC";
+    const dU0 = el("dUlt"), tU0 = el("tUlt");
+    const ult = ops.length ? ops[0].t0 : 0;
+    if (ult){ dU0.className = "dot ok";
+      tU0.textContent = "Última: " + new Date(ult).toLocaleString("es-ES",
+        { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" }); }
+    else { dU0.className = "dot"; tU0.textContent = "Sin operaciones todavía"; }
+    return;
+  }
+
   let salud = null;
   try { salud = await pedir("/health"); } catch(e){}
 
-  const dP = el("dPuente"), tP = el("tPuente");
   if (salud && salud.ok){ dP.className="dot ok"; tP.textContent = "Puente enlazado · " + fmtDur(salud.uptime||0); }
   else { dP.className="dot bad"; tP.textContent = "Puente caído"; }
 
@@ -2072,6 +2094,13 @@ el("bGuardar").onclick = () => {
 };
 
 el("ver").textContent = "v" + VER;
+
+// Si quedo guardada como puente la direccion de la propia web (https), no
+// sirve: el puente vive en el PC y siempre es http.
+if (/^https:/i.test(cfg.bridge)){
+  cfg.bridge = "http://127.0.0.1:8787";
+  guardarCfg();
+}
 
 // Limpieza de los emparejamientos que se rellenaron solos y apuntaban al
 // nombre del broker. Se hace una vez y se sube al cofre para todos los equipos.
