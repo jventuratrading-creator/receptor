@@ -55,23 +55,34 @@
     #panelFiltros{display:none}
     #panelFiltros.abierto{display:block}
     main{padding:0 8px 30px}
-    /* Los totales en rejilla de tres, que en fila no caben. */
-    .totales{display:grid;grid-template-columns:repeat(3,1fr);gap:10px 8px;
-      padding:10px 12px;margin:10px 0}
+    /* Solo cuatro totales, en dos filas de dos. El resto sobra en un movil. */
+    .totales{display:grid;grid-template-columns:1fr 1fr;gap:9px 8px;
+      padding:10px 12px;margin:9px 0}
     .totales .tot b{font-size:9.5px}
-    .totales .tot span{font-size:14px}
-    /* Los botones de accion, en dos filas legibles en vez de apelotonados. */
+    .totales .tot span{font-size:15px}
+    .totales .tot.menos{display:none}
+    /* Las cuatro luces se resumen en una sola. */
+    .pills{display:none}
+    #estadoMovil{margin-left:auto;max-width:60vw;overflow:hidden;white-space:nowrap;
+      text-overflow:ellipsis}
+    .ver{margin-left:6px}
+    /* Las acciones, siempre a la vista y en dos columnas. */
+    #acciones{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+    #acciones .sw{grid-column:1/3;width:100%;justify-content:space-between}
+    #acciones #bEnviar{grid-column:1/3;padding:11px;font-size:14px}
+    #acciones button{width:100%;font-size:12.5px;padding:8px 6px}
     #panelFiltros .fila{gap:6px}
     #panelFiltros button, #panelFiltros .chip{font-size:12px;padding:6px 10px}
-    .sw{width:100%}
-    .tot b{font-size:10px}
-    .tot span{font-size:16px}
-    /* La tabla se desplaza en horizontal en vez de aplastarse. */
-    .envoltorio{overflow-x:auto;-webkit-overflow-scrolling:touch}
-    table{min-width:720px}
-    thead th{font-size:10px;padding:7px 7px}
+    /* Nada de desplazamiento horizontal: en el movil no hay tabla, hay fichas,
+       y tienen que caber en el ancho de la pantalla. */
+    .envoltorio{overflow-x:visible}
+    table{min-width:0;max-width:100%;width:100%}
+    .inner table{min-width:0;width:100%}
     tbody td{padding:7px 7px;font-size:12.5px}
-    .inner table{min-width:560px}
+    /* Que nada se salga por la derecha. */
+    .tj, .tj-1, .tj-2, .dt-l, tr.dia td{max-width:100%;overflow-wrap:anywhere}
+    tr.dia .fecha{font-size:13px}
+    tr.dia .meta{margin-left:0;display:block;font-size:11.5px;margin-top:2px}
     dialog{width:96vw}
     .dlg-b{padding:14px}
   }
@@ -184,7 +195,8 @@
   .fld input{width:100%}
   .hint{font-size:12px;color:var(--dim);margin-top:5px}
   /* --- Movil: cada operacion es una ficha, no una fila de 14 columnas --- */
-  .tj{display:grid;grid-template-columns:26px 1fr auto;gap:3px 10px;align-items:start;padding:2px 0}
+  .tj{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:3px 8px;
+    align-items:start;padding:2px 0}
   .tj-s{grid-row:1/3;padding-top:3px}
   .tj-1{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:14px;line-height:1.3}
   .tj-2{font-size:11.5px;color:var(--dim);display:flex;gap:7px;flex-wrap:wrap;margin-top:3px}
@@ -224,8 +236,9 @@
       <span class="pill op-pc"><span class="dot" id="dNt8"></span><span id="tNt8">NinjaTrader…</span></span>
       <span class="pill op-pc"><span class="dot" id="dUlt"></span><span id="tUlt">Sin operaciones</span></span>
     </div>
+    <span class="pill solo-movil" id="estadoMovil"><span class="dot" id="dMovil"></span><span id="tMovil">…</span></span>
     <span class="ver" id="ver" title="Versión de la app"></span>
-    <button class="chip solo-movil" id="bMenu">Filtros ▾</button>
+    <button class="chip solo-movil" id="bMenu">Menú ▾</button>
   </div>
 
   <div id="panelFiltros">
@@ -250,35 +263,36 @@
     </div>
 
     <div class="fila">
-      <div class="sw" id="swAuto" title="Solo afecta a las operaciones que lleguen DESPUÉS de activarlo">
-        Envío automático
-        <span class="track" id="trAuto"><span class="knob"></span></span>
-        <span id="tAuto" style="color:var(--dim)">off</span>
-      </div>
-      <button class="primary" id="bEnviar" disabled>Volcar al journal</button>
-      <button id="bEnv" disabled title="Marca como enviadas las operaciones seleccionadas, sin mandarlas al journal">Marcar enviada</button>
-      <button id="bNoEnv" disabled title="Devuelve a pendiente las operaciones marcadas que ya estaban enviadas">Marcar no enviada</button>
-      <span class="sep"></span>
-      <button id="bHist" class="op-pc">Historial NT8</button>
-      <button id="bFichero">Importar fichero</button>
+      <button id="bHist" class="op-pc" title="Lee la base de datos de NinjaTrader en este PC y trae lo que elijas">Traer historial</button>
+      <button id="bFichero" title="Mete operaciones desde un fichero que tengas guardado">Importar historial</button>
       <input type="file" id="ficheroIn" accept=".csv,.json,text/csv,application/json" style="display:none">
-      <button id="bJson">JSON</button>
-      <button id="bCsv">CSV</button>
-      <button id="bRecargar">Recargar</button>
+      <button id="bCsv" title="Baja a un fichero lo que ves ahora en la Bandeja">Descargar historial</button>
       <button id="bCfg">Ajustes</button>
     </div>
+  </div>
+
+  <div class="fila" id="acciones">
+    <div class="sw" id="swAuto" title="Solo afecta a las operaciones que lleguen DESPUÉS de activarlo">
+      Envío automático
+      <span class="track" id="trAuto"><span class="knob"></span></span>
+      <span id="tAuto" style="color:var(--dim)">off</span>
+    </div>
+    <button class="primary" id="bEnviar" disabled>Volcar al journal</button>
+    <button id="bEnv" disabled title="Marca como enviadas las operaciones seleccionadas, sin mandarlas al journal">Marcar enviada</button>
+    <button id="bNoEnv" disabled title="Devuelve a pendiente las operaciones marcadas que ya estaban enviadas">Marcar no enviada</button>
+    <button id="bRecargar">Recargar</button>
   </div>
 </header>
 
 <main>
   <div class="totales">
     <div class="tot"><b>Operaciones</b><span class="num" id="kOps">0</span></div>
-    <div class="tot"><b>Resultado bruto</b><span class="num" id="kBruto">0</span></div>
-    <div class="tot"><b>Comisiones</b><span class="num" id="kCom">0</span></div>
+    <div class="tot menos"><b>Resultado bruto</b><span class="num" id="kBruto">0</span></div>
+    <div class="tot menos"><b>Comisiones</b><span class="num" id="kCom">0</span></div>
     <div class="tot"><b>Neto</b><span class="num" id="kNeto">0</span></div>
     <div class="tot"><b>Ganadoras</b><span class="num" id="kWin">0</span></div>
     <div class="tot"><b>Pendientes</b><span class="num" id="kPend">0</span></div>
-    <div class="tot"><b>Seleccionadas</b><span class="num" id="kSel">0</span></div>
+    <div class="tot menos"><b>Seleccionadas</b><span class="num" id="kSel">0</span></div>
   </div>
 
   <div id="vacio" class="empty"><span id="vacioTxt">Sin operaciones en este rango.</span></div>
@@ -444,7 +458,7 @@
 </dialog>
 
 <script>
-const VER = "3.5";
+const VER = "3.7";
 "use strict";
 
 const PUNTOS_DEF = "ES=50,MES=5,NQ=20,MNQ=2,YM=5,MYM=0.5,RTY=50,M2K=5,"
@@ -775,6 +789,35 @@ async function cofreCiclo(forzar){
     cofreEstado = (e && e.message) || "error";
   }
   pintarCofre();
+  pintarResumenMovil();
+}
+
+// En el movil no caben cuatro luces, asi que se resumen en una: la que peor
+// este manda, y si todo va bien dice desde cuando.
+function pintarResumenMovil(){
+  const d = el("dMovil"), t = el("tMovil");
+  if (!d) return;
+  const mal = [];
+  for (const [p, nombre] of [["Cofre","cofre"], ["Puente","puente"], ["Nt8","NinjaTrader"]]){
+    const punto = el("d" + p);
+    if (!punto) continue;
+    if (punto.className.indexOf("bad")  >= 0) mal.push(["bad",  nombre]);
+    else if (punto.className.indexOf("warn") >= 0) mal.push(["warn", nombre]);
+  }
+  if (mal.length){
+    const peor = mal.find(x => x[0] === "bad") || mal[0];
+    d.className = "dot " + peor[0];
+    t.textContent = mal.length === 1
+      ? ({ cofre:"Cofre caído", puente:"Puente caído", NinjaTrader:"NinjaTrader sin señal" })[peor[1]]
+      : mal.length + " avisos";
+    return;
+  }
+  d.className = "dot ok";
+  const ult = ops.length ? ops[0].t0 : 0;
+  t.textContent = ult
+    ? "Al día · última " + new Date(ult).toLocaleString("es-ES",
+        { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" })
+    : "Al día · sin operaciones";
 }
 
 function pintarCofre(){
@@ -840,6 +883,7 @@ async function refrescarEstado(){
       tU0.textContent = "Última: " + new Date(ult).toLocaleString("es-ES",
         { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" }); }
     else { dU0.className = "dot"; tU0.textContent = "Sin operaciones todavía"; }
+    pintarResumenMovil();
     return;
   }
 
@@ -866,6 +910,8 @@ async function refrescarEstado(){
   if (salud && salud.lastAt){ dU.className="dot ok";
     tU.textContent = "Última recepción: " + new Date(salud.lastAt).toLocaleString("es-ES"); }
   else { dU.className="dot"; tU.textContent = "Sin operaciones todavía"; }
+
+  pintarResumenMovil();
 }
 
 async function traerFills(desdeCero){
@@ -1726,7 +1772,7 @@ el("ficheroIn").onchange = async e => {
 el("bMenu").onclick = () => {
   const pf = el("panelFiltros");
   pf.classList.toggle("abierto");
-  el("bMenu").textContent = pf.classList.contains("abierto") ? "Filtros ▴" : "Filtros ▾";
+  el("bMenu").textContent = pf.classList.contains("abierto") ? "Menú ▴" : "Menú ▾";
 };
 
 el("bRecargar").onclick = async () => {
@@ -1762,8 +1808,6 @@ el("bNoEnv").onclick = () => {
   pintar(); refrescarBotones(); pintarSelTodo();
 };
 el("bCsv").onclick = csv;
-el("bJson").onclick = () =>
-  bajar("operaciones_" + sello() + ".json", JSON.stringify(visibles().map(aFila), null, 2), "application/json");
 
 // ---------------------------------------------------------------------------
 // Importar un fichero CSV o JSON generado por la propia Bandeja.
