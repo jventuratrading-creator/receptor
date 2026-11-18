@@ -422,10 +422,11 @@
       </div>
       <div class="hint">Para quitarte de encima meses enteros de golpe.</div>
 
-      <button id="bVaciar" style="margin-top:12px">Vaciar el historial entero</button>
-      <div class="hint">Borra todo lo guardado en el cofre y en este dispositivo,
-        en todos los equipos. No toca tu journal ni tus ficheros. Úsalo si ves
-        operaciones duplicadas o mal agrupadas: vacías y vuelves a importar.</div></div>
+      <button id="bVaciar" style="margin-top:12px">Reiniciar el historial</button>
+      <div class="hint">Vacía lo guardado en el cofre y vuelve a empezar: el puente
+        del PC lo sube otra vez desde cero, con las reglas de ahora. Para esto
+        sirve, para rehacerlo, no para borrar. <b>Si lo que quieres es borrar de
+        verdad, usa las fechas de arriba.</b> No toca tu journal ni tus ficheros.</div></div>
     <div class="fld"><label>Corrección de hora de MetaTrader (minutos)</label>
       <input type="number" id="cOff" step="15" style="width:110px">
       <div class="hint">MetaTrader manda la hora del servidor del broker, no la tuya.
@@ -443,7 +444,7 @@
 </dialog>
 
 <script>
-const VER = "3.2";
+const VER = "3.4";
 "use strict";
 
 const PUNTOS_DEF = "ES=50,MES=5,NQ=20,MNQ=2,YM=5,MYM=0.5,RTY=50,M2K=5,"
@@ -1216,12 +1217,31 @@ function pintar(){
       const delDia = lista.filter(x => dia(x.t0) === d);
       const nBruto = delDia.reduce((s,x)=> s+x.bruto, 0);
       const nCom   = delDia.reduce((s,x)=> s+x.com, 0);
+      const marcablesDia = delDia.filter(x => !x.abierta);
+      const selDia = marcablesDia.filter(x => seleccion.has(x.id));
       const tr = document.createElement("tr");
       tr.className = "dia";
-      tr.innerHTML = '<td colspan="14"><span class="fecha">' + fechaLarga(d) + '</span>' +
+      tr.innerHTML = '<td colspan="14">' +
+        (marcablesDia.length
+          ? '<input type="checkbox" data-dia="1" title="Seleccionar todas las de este día"' +
+            (selDia.length === marcablesDia.length ? " checked" : "") + '> '
+          : "") +
+        '<span class="fecha">' + fechaLarga(d) + '</span>' +
         '<span class="meta">' + delDia.length + (delDia.length===1?" operación":" operaciones") +
         ' · bruto ' + fmt(nBruto,2) + ' $ · comisiones ' + fmt(nCom,2) + ' $</span>' +
         '<span style="float:right" class="num">Total del día: ' + dinero(nBruto+nCom) + '</span></td>';
+
+      const cajaDia = tr.querySelector("[data-dia]");
+      if (cajaDia){
+        // Marcada a medias cuando solo hay algunas del dia seleccionadas.
+        cajaDia.indeterminate = selDia.length > 0 && selDia.length < marcablesDia.length;
+        cajaDia.onclick = e => {
+          e.stopPropagation();
+          if (e.target.checked) for (const x of marcablesDia) seleccion.add(x.id);
+          else                  for (const x of marcablesDia) seleccion.delete(x.id);
+          pintar(); refrescarBotones(); pintarSelTodo();
+        };
+      }
       cuerpo.appendChild(tr);
     }
 
@@ -2554,8 +2574,9 @@ el("bArreglar").onclick = async () => {
 
 el("bVaciar").onclick = async () => {
   const n = Object.keys(opsRemotas).length;
-  if (!confirm("Se van a borrar " + n + " operaciones guardadas, en todos los dispositivos.\n\n"
-    + "Tu journal NO se toca. Despues vuelve a importar el CSV.\n\n¿Seguir?")) return;
+  if (!confirm("Se vacía el historial del cofre y el puente lo vuelve a subir desde cero.\n\n"
+    + "Tu journal NO se toca. Si tenías operaciones importadas de un CSV, "
+    + "vuelve a importarlo después.\n\n¿Seguir?")) return;
   const b = el("bVaciar");
   b.disabled = true; b.textContent = "Vaciando…";
   opsRemotas = {}; ops = []; fills = []; ultSeq = 0; fillsVistos.clear();
@@ -2566,10 +2587,12 @@ el("bVaciar").onclick = async () => {
     await cofreEscribir({ v:1, ts:Date.now(), ops:{}, meta:{},
       mapas:{ cuentas:cfg.mapCuentas, activos:cfg.mapActivos, ts:cfg.mapasTs } });
     // Y la fila de operaciones sueltas, que es donde esta casi todo.
+    // Sin barrera: vaciar es empezar de cero, no borrar para siempre. El
+    // puente del PC lo vuelve a subir entero desde su propio archivo.
     await cofreLlamar("panel_set", { p_box: cofreCajaFills(),
-      p_data: { v:1, ts:Date.now(), corte:Date.now(), dias:fillsRemoto.dias||0, fills:[] } }, 20000);
+      p_data: { v:1, ts:Date.now(), corte:0, dias:fillsRemoto.dias||0, fills:[] } }, 20000);
     fillsVistos.clear();
-    fillsRemoto = { n:0, corte:Date.now(), dias:fillsRemoto.dias||0, ts:Date.now() };
+    fillsRemoto = { n:0, corte:0, dias:fillsRemoto.dias||0, ts:Date.now() };
     pintarEstadoFills();
     b.textContent = "Historial vaciado";
   } catch(e){
