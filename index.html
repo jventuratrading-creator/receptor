@@ -34,71 +34,6 @@
   .row+.row{margin-top:9px}
   .solo-movil{display:none}
 
-  @media (max-width:760px){
-    thead{display:none}
-    table, tbody, tr, td{display:block;width:auto}
-    tr.op > td{padding:10px 12px;border-bottom:1px solid var(--line2)}
-    tr.dia > td{padding:12px 12px 6px;border:0}
-    tr.dia .meta{display:block;margin:3px 0 0}
-    tr.dia [style*="float:right"]{float:none !important;display:block;margin-top:4px}
-    tr.detail > td{padding:0 12px 14px}
-    .notes{flex-direction:column;align-items:stretch}
-    .notes input, .notes button{width:100% !important}
-    header{padding:7px 10px}
-    h1{font-size:14px}
-    .solo-movil{display:inline-flex}
-    .op-pc{display:none}
-    .pills{margin-left:8px;gap:5px}
-    .ver{margin-left:auto;font-size:10px}
-    .pill{padding:3px 9px;font-size:11.5px}
-    /* En el movil los filtros se despliegan solo si los pides. */
-    #panelFiltros{display:none}
-    #panelFiltros.abierto{display:block}
-    main{padding:0 8px 30px}
-    /* Solo cuatro totales, en dos filas de dos. El resto sobra en un movil. */
-    .totales{display:grid;grid-template-columns:1fr 1fr;gap:9px 8px;
-      padding:10px 12px;margin:9px 0}
-    .totales .tot b{font-size:9.5px}
-    .totales .tot span{font-size:15px}
-    .totales .tot.menos{display:none}
-    /* Las cuatro luces se resumen en una sola. */
-    .pills{display:none}
-    #estadoMovil{margin-left:auto;max-width:60vw;overflow:hidden;white-space:nowrap;
-      text-overflow:ellipsis}
-    .ver{margin-left:6px}
-    /* Las acciones, siempre a la vista y en dos columnas. */
-    #acciones{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
-    #acciones .sw{grid-column:1/3;width:100%;justify-content:space-between}
-    #acciones #bEnviar{grid-column:1/3;padding:11px;font-size:14px}
-    #acciones button{width:100%;font-size:12.5px;padding:8px 6px}
-    #panelFiltros .fila{gap:6px}
-    #panelFiltros button, #panelFiltros .chip{font-size:12px;padding:6px 10px}
-    /* Las casillas de seleccionar solo salen cuando las pides: llenar la
-       pantalla de cuadrados blancos para algo que se usa de vez en cuando
-       es ruido. */
-    .tj-s, tr.dia input[type=checkbox]{display:none}
-    body.sel .tj-s{display:block}
-    body.sel tr.dia input[type=checkbox]{display:inline-block}
-    .tj{grid-template-columns:0 minmax(0,1fr) auto;gap:3px 0}
-    body.sel .tj{grid-template-columns:24px minmax(0,1fr) auto;gap:3px 8px}
-    /* El envio automatico y los botones, dentro del menu. */
-    #acciones{display:none}
-    #panelFiltros.abierto ~ #acciones, body.sel #acciones{display:grid}
-    /* El estado, lo justo para saber que va bien. */
-    #estadoMovil{max-width:42vw;font-size:11px;padding:2px 8px}
-    /* Nada de desplazamiento horizontal: en el movil no hay tabla, hay fichas,
-       y tienen que caber en el ancho de la pantalla. */
-    .envoltorio{overflow-x:visible}
-    table{min-width:0;max-width:100%;width:100%}
-    .inner table{min-width:0;width:100%}
-    tbody td{padding:7px 7px;font-size:12.5px}
-    /* Que nada se salga por la derecha. */
-    .tj, .tj-1, .tj-2, .dt-l, tr.dia td{max-width:100%;overflow-wrap:anywhere}
-    tr.dia .fecha{font-size:13px}
-    tr.dia .meta{margin-left:0;display:block;font-size:11.5px;margin-top:2px}
-    dialog{width:96vw}
-    .dlg-b{padding:14px}
-  }
   h1{font-size:15px;margin:0;font-weight:600;letter-spacing:.3px;
     display:flex;align-items:center;gap:8px}
   .logo{display:inline-flex;color:var(--txt);flex:none}
@@ -187,7 +122,8 @@
   .chipset{display:flex;gap:6px;flex-wrap:wrap}
   .chipset button{font-size:12px;padding:4px 10px;border-radius:999px;
     border:1px solid var(--line);background:transparent;color:var(--dim);cursor:pointer}
-  .chipset button.on{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+  .chipset button.on{background:var(--accent);border-color:var(--accent);
+    color:#07121f;font-weight:600}
   .campos input[type=url]{flex:1;min-width:200px}
   @media (max-width:760px){
     .campos .et{min-width:0;width:100%}
@@ -237,6 +173,79 @@
   @media (max-width:760px){ .prev{max-height:40vh} .resumen{gap:14px} .resumen span{font-size:15px} }
   .warnbox{background:rgba(210,153,34,.1);border:1px solid var(--warn);
     border-radius:6px;padding:10px 12px;font-size:12.5px;margin-bottom:16px}
+
+  /* ---- MOVIL ----
+     Va al final a proposito: en CSS, a igualdad de especificidad gana la
+     ultima regla. Si esto estuviera arriba, cada regla normal de abajo lo
+     pisaria y el movil se veria como el escritorio. */
+  @media (max-width:760px){
+    thead{display:none}
+    table, tbody, tr, td{display:block;width:auto}
+    tr.op > td{padding:10px 12px;border-bottom:1px solid var(--line2)}
+    tr.dia > td{padding:12px 12px 6px;border:0}
+    tr.dia .meta{display:block;margin:3px 0 0}
+    tr.dia [style*="float:right"]{float:none !important;display:block;margin-top:4px}
+    tr.detail > td{padding:0 12px 14px}
+    .notes{flex-direction:column;align-items:stretch}
+    .notes input, .notes button{width:100% !important}
+    header{padding:7px 10px}
+    h1{font-size:14px}
+    .solo-movil{display:inline-flex}
+    .op-pc{display:none}
+    .pills{margin-left:8px;gap:5px}
+    .ver{margin-left:auto;font-size:10px}
+    .pill{padding:3px 9px;font-size:11.5px}
+    /* En el movil los filtros se despliegan solo si los pides. */
+    #panelFiltros{display:none}
+    #panelFiltros.abierto{display:block}
+    main{padding:0 8px 30px}
+    /* Solo cuatro totales, en dos filas de dos. El resto sobra en un movil. */
+    .totales{display:grid;grid-template-columns:1fr 1fr;gap:9px 8px;
+      padding:10px 12px;margin:9px 0}
+    .totales .tot b{font-size:9.5px}
+    .totales .tot span{font-size:15px}
+    .totales .tot.menos{display:none}
+    /* Las cuatro luces se resumen en una sola. */
+    .pills{display:none}
+    #estadoMovil{margin-left:auto;max-width:60vw;overflow:hidden;white-space:nowrap;
+      text-overflow:ellipsis}
+    .ver{margin-left:6px}
+    /* Las acciones, siempre a la vista y en dos columnas. */
+    #acciones{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+    #acciones .sw{grid-column:1/3;width:100%;justify-content:space-between}
+    #acciones #bEnviar{grid-column:1/3;padding:11px;font-size:14px}
+    #acciones button{width:100%;font-size:12.5px;padding:8px 6px}
+    #panelFiltros .fila{gap:6px}
+    #panelFiltros button, #panelFiltros .chip{font-size:12px;padding:6px 10px}
+    /* Las casillas de seleccionar solo salen cuando las pides: llenar la
+       pantalla de cuadrados blancos para algo que se usa de vez en cuando
+       es ruido. */
+    .tj-s{width:0;overflow:hidden}
+    .tj-s input{display:none}
+    tr.dia input[type=checkbox]{display:none}
+    body.sel .tj-s{width:auto;overflow:visible}
+    body.sel .tj-s input{display:block}
+    body.sel tr.dia input[type=checkbox]{display:inline-block}
+    .tj{grid-template-columns:0 minmax(0,1fr) auto;gap:3px 0}
+    body.sel .tj{grid-template-columns:24px minmax(0,1fr) auto;gap:3px 8px}
+    /* El envio automatico y los botones, dentro del menu. */
+    #acciones{display:none}
+    #panelFiltros.abierto ~ #acciones, body.sel #acciones{display:grid}
+    /* El estado, lo justo para saber que va bien. */
+    #estadoMovil{max-width:42vw;font-size:11px;padding:2px 8px}
+    /* Nada de desplazamiento horizontal: en el movil no hay tabla, hay fichas,
+       y tienen que caber en el ancho de la pantalla. */
+    .envoltorio{overflow-x:visible}
+    table{min-width:0;max-width:100%;width:100%}
+    .inner table{min-width:0;width:100%}
+    tbody td{padding:7px 7px;font-size:12.5px}
+    /* Que nada se salga por la derecha. */
+    .tj, .tj-1, .tj-2, .dt-l, tr.dia td{max-width:100%;overflow-wrap:anywhere}
+    tr.dia .fecha{font-size:13px}
+    tr.dia .meta{margin-left:0;display:block;font-size:11.5px;margin-top:2px}
+    dialog{width:96vw}
+    .dlg-b{padding:14px}
+  }
 </style>
 </head>
 <body>
@@ -473,7 +482,7 @@
 </dialog>
 
 <script>
-const VER = "3.8";
+const VER = "3.9";
 "use strict";
 
 const PUNTOS_DEF = "ES=50,MES=5,NQ=20,MNQ=2,YM=5,MYM=0.5,RTY=50,M2K=5,"
