@@ -146,13 +146,16 @@
   /* --- Movil: cada operacion es una ficha, no una fila de 14 columnas --- */
   .tj{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:3px 8px;
     align-items:start;padding:2px 0}
-  .tj-s{grid-row:1/3;padding-top:3px}
+  .tj-s{grid-column:1;grid-row:1/3;padding-top:3px}
+  .tj-c{grid-column:2;grid-row:1/3;min-width:0}
   .tj-1{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:14px;line-height:1.3}
   .tj-2{font-size:11.5px;color:var(--dim);display:flex;gap:7px;flex-wrap:wrap;margin-top:3px}
-  .tj-t{grid-row:1/3;text-align:right;white-space:nowrap}
+  .tj-t{grid-column:3;grid-row:1/3;text-align:right;white-space:nowrap}
   .tj-t b{display:block;font-size:15px;font-weight:600}
   .dirtag{color:var(--accent);font-weight:600;font-size:12px;letter-spacing:.4px}
-  .tj-t span{display:block;font-size:11px;color:var(--dim);margin-top:2px}
+  .tj-t > span{display:block;font-size:11px;color:var(--dim);margin-top:2px}
+  .tj-t .pos{color:var(--ok)}
+  .tj-t .neg{color:var(--bad)}
   .dt-l{display:grid;grid-template-columns:1fr auto;gap:3px 10px;font-size:12.5px;
     padding:8px 0;border-top:1px solid var(--line2)}
   .dt-l span:nth-child(even){text-align:right;font-variant-numeric:tabular-nums}
@@ -482,7 +485,7 @@
 </dialog>
 
 <script>
-const VER = "3.9";
+const VER = "4.0";
 "use strict";
 
 const PUNTOS_DEF = "ES=50,MES=5,NQ=20,MNQ=2,YM=5,MYM=0.5,RTY=50,M2K=5,"
@@ -1326,7 +1329,7 @@ function pintar(){
         : "";
       tr.innerHTML = '<td colspan="14"><div class="tj">'
         + '<div class="tj-s">' + caja + '</div>'
-        + '<div>'
+        + '<div class="tj-c">'
           + '<div class="tj-1"><span class="caret">&#9654;</span>'
             + '<span class="dirtag">' + (o.dir==="Long"?"LARGO":"CORTO") + '</span>'
             + '<b>' + esc(etiqueta(o.simbolo)) + '</b>'
@@ -1344,7 +1347,7 @@ function pintar(){
         + '<div class="tj-t"><b class="num">'
           + (o.abierta ? "abierta" : dinero(o.neto)) + '</b>'
           + (o.cuentas.length > 1 && !o.abierta
-             ? '<span class="num">' + dinero(o.porCuenta) + ' / cuenta</span>' : '')
+             ? '<span class="num">' + dinero(o.porCuenta) + ' /cta</span>' : '')
         + '</div></div></td>';
       tr.onclick = () => { abiertas[o.id] = !abiertas[o.id]; pintar(); };
       const cj = tr.querySelector("[data-sel]");
