@@ -444,7 +444,7 @@
 </dialog>
 
 <script>
-const VER = "3.4";
+const VER = "3.5";
 "use strict";
 
 const PUNTOS_DEF = "ES=50,MES=5,NQ=20,MNQ=2,YM=5,MYM=0.5,RTY=50,M2K=5,"
@@ -2499,7 +2499,13 @@ el("cDias").onchange = () => {
 
 el("bCorte").onclick = () => {
   const v = el("cCorte").value;
-  if (!v){ el("cCorte").focus(); return; }
+  if (!v){
+    const b = el("bCorte"), t = b.textContent;
+    b.textContent = "Elige antes una fecha";
+    el("cCorte").focus();
+    setTimeout(()=> { b.textContent = t; }, 2200);
+    return;
+  }
   const t = Date.parse(v + "T00:00:00");
   if (!Number.isFinite(t)) return;
   if (!confirm("Se borrará todo lo anterior al " + new Date(t).toLocaleDateString("es-ES")
