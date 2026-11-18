@@ -156,6 +156,20 @@
   .inner table{width:auto;min-width:760px}
   .inner thead th{background:#090d13;font-size:10.5px;top:auto;position:static}
   .inner tbody td{padding:5px 10px;border-bottom:1px solid #151b24;font-size:12.5px}
+  .campos{margin-top:13px;border-top:1px solid var(--line2);padding-top:12px}
+  .campos .lin{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:9px}
+  .campos .et{font-size:11px;color:var(--dim);text-transform:uppercase;
+    letter-spacing:.5px;min-width:60px}
+  .chipset{display:flex;gap:6px;flex-wrap:wrap}
+  .chipset button{font-size:12px;padding:4px 10px;border-radius:999px;
+    border:1px solid var(--line);background:transparent;color:var(--dim);cursor:pointer}
+  .chipset button.on{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+  .campos input[type=url]{flex:1;min-width:200px}
+  @media (max-width:760px){
+    .campos .et{min-width:0;width:100%}
+    .campos .lin{gap:6px}
+    .campos select, .campos input[type=url]{width:100%}
+  }
   .notes{display:flex;gap:10px;margin-top:13px;flex-wrap:wrap}
   .notes input[type=text]{flex:1;min-width:210px}
 
@@ -383,11 +397,35 @@
         en tu journal a 200K E8M, PA Apex 16, Apex 108… Antes de escribir se te
         descarga una copia de seguridad.</div></div>
     <div class="fld"><label>Historial guardado</label>
-      <button id="bVaciar">Vaciar el historial guardado</button>
-      <div class="hint">Borra las operaciones que hay guardadas en el cofre y en este
-        dispositivo, en todos los equipos. No toca tu journal ni los ficheros.
-        Úsalo cuando veas operaciones duplicadas o mal agrupadas: vacías y
-        vuelves a importar el CSV.</div></div>
+      <div id="cEstadoFills" class="hint" style="margin:0 0 8px">—</div>
+
+      <label style="font-weight:400">Borrado automático</label>
+      <select id="cDias" style="width:230px">
+        <option value="0">No borrar nada</option>
+        <option value="30">Guardar solo el último mes</option>
+        <option value="90">Guardar los últimos 3 meses</option>
+        <option value="180">Guardar los últimos 6 meses</option>
+        <option value="365">Guardar el último año</option>
+      </select>
+      <div class="hint">Lo más antiguo se va borrando solo, una vez al día.
+        Lo que ya volcaste a tu journal sigue ahí: esto solo limpia la Bandeja.</div>
+
+      <label style="font-weight:400;margin-top:10px">Borrar ahora lo anterior a</label>
+      <div class="fila" style="gap:6px;margin-bottom:4px">
+        <input type="date" id="cCorte">
+        <button id="bCorte">Borrar</button>
+      </div>
+      <div class="fila" style="gap:6px">
+        <button class="chip" data-corte="30">Más de 1 mes</button>
+        <button class="chip" data-corte="90">Más de 3 meses</button>
+        <button class="chip" data-corte="365">Más de 1 año</button>
+      </div>
+      <div class="hint">Para quitarte de encima meses enteros de golpe.</div>
+
+      <button id="bVaciar" style="margin-top:12px">Vaciar el historial entero</button>
+      <div class="hint">Borra todo lo guardado en el cofre y en este dispositivo,
+        en todos los equipos. No toca tu journal ni tus ficheros. Úsalo si ves
+        operaciones duplicadas o mal agrupadas: vacías y vuelves a importar.</div></div>
     <div class="fld"><label>Corrección de hora de MetaTrader (minutos)</label>
       <input type="number" id="cOff" step="15" style="width:110px">
       <div class="hint">MetaTrader manda la hora del servidor del broker, no la tuya.
@@ -405,7 +443,7 @@
 </dialog>
 
 <script>
-const VER = "2.6";
+const VER = "3.2";
 "use strict";
 
 const PUNTOS_DEF = "ES=50,MES=5,NQ=20,MNQ=2,YM=5,MYM=0.5,RTY=50,M2K=5,"
@@ -446,6 +484,7 @@ const cfg = (function(){
     // Estos minutos se SUMAN a las horas de origen mt5 (-60 = una hora menos).
     offMin : Number.isFinite(g.offMin) && g.vOff === 3 ? g.offMin : -60,
     vOff   : 3,
+    listas : g.listas || { planes:null, setups:null, ts:0 },
     rango  : g.rango || "todo",
     desde  : g.desde || "", hasta: g.hasta || "",
     // Por defecto solo NinjaTrader. MetaTrader y los fills de prueba del panel,
@@ -499,6 +538,10 @@ function metaDe(id){
   if (!meta[id]) meta[id] = { nota:"", etiqueta:"", sl:"", tp:"", enviada:false, ts:0, visto:Date.now() };
   if (meta[id].sl === undefined) meta[id].sl = "";
   if (meta[id].tp === undefined) meta[id].tp = "";
+  if (meta[id].plan === undefined) meta[id].plan = "";
+  if (meta[id].planSub === undefined) meta[id].planSub = "";
+  if (!Array.isArray(meta[id].setups)) meta[id].setups = [];
+  if (meta[id].enlace === undefined) meta[id].enlace = "";
   if (!meta[id].visto) meta[id].visto = Date.now();
   return meta[id];
 }
@@ -526,6 +569,72 @@ function mapaPuntos(){
 // ---------------------------------------------------------------------------
 function cofreListo(){ return !!(cfg.sbUrl && cfg.sbKey && cfg.box && cfg.box.length >= 6); }
 function cofreCaja(){ return cfg.box + ":receptor"; }
+// Fila aparte para las operaciones sueltas: las escribe el puente del PC, y
+// todos los dispositivos las leen y las agrupan por su cuenta.
+function cofreCajaFills(){ return cfg.box + ":fills"; }
+
+// Lo ultimo que sabemos de esa fila: cuantas hay y hasta donde se guarda.
+let fillsRemoto = { n:0, corte:0, dias:0, ts:0 };
+
+// Las operaciones sueltas pesan mucho mas que las notas, asi que no se leen
+// en cada vuelta: al abrir, al volver a la app, al darle a Recargar y cada
+// pocos minutos. En el PC no hacen falta ni eso, porque llegan por el puente.
+let fillsUltimo = 0, fillsOcupado = false;
+
+async function cofreFillsSiToca(forzar){
+  if (!cofreListo() || fillsOcupado) return;
+  if (!forzar && Date.now() - fillsUltimo < 120000) return;
+  fillsOcupado = true;
+  try {
+    if (await cofreFills()){ construir(); refrescar(); }
+    fillsUltimo = Date.now();
+  } catch(e){
+    // si falla, se reintenta en la siguiente
+  } finally { fillsOcupado = false; }
+}
+
+async function cofreFills(){
+  if (!cofreListo()) return false;
+  const d = await cofreLlamar("panel_get", { p_box: cofreCajaFills() }, 15000);
+  const caja = (d && typeof d === "object" && !Array.isArray(d)) ? d : {};
+  const lista = Array.isArray(caja.fills) ? caja.fills : [];
+
+  fillsRemoto = {
+    n: lista.length,
+    corte: Number(caja.corte) || 0,
+    dias: Number.isFinite(caja.dias) ? caja.dias : 0,
+    ts: Number(caja.ts) || 0
+  };
+
+  let nuevos = 0;
+  for (const f of lista) if (meterFill(f)) nuevos++;
+
+  // Lo borrado en el cofre se va tambien de aqui, o al recargar reaparece.
+  let quitados = 0;
+  if (fillsRemoto.corte){
+    const antes = fills.length;
+    fills = fills.filter(f => {
+      const t = Date.parse(String(f.at||"").replace(" ","T"));
+      if (Number.isFinite(t) && t < fillsRemoto.corte){ fillsVistos.delete(f.fillKey); return false; }
+      return true;
+    });
+    quitados = antes - fills.length;
+  }
+  return (nuevos + quitados) > 0;
+}
+
+// Cambia hasta donde se guarda. Lo escribe la app; el puente lo obedece.
+async function cofreGuardado(corte, dias){
+  const d = await cofreLlamar("panel_get", { p_box: cofreCajaFills() }, 15000);
+  const caja = (d && typeof d === "object" && !Array.isArray(d)) ? d : {};
+  const lista = (Array.isArray(caja.fills) ? caja.fills : []).filter(f => {
+    const t = Date.parse(String(f.at||"").replace(" ","T"));
+    return !Number.isFinite(t) || t >= corte;
+  });
+  await cofreLlamar("panel_set", { p_box: cofreCajaFills(),
+    p_data: { v:1, ts:Date.now(), corte:corte, dias:dias, fills:lista } }, 30000);
+  return lista.length;
+}
 
 function cofreCab(){
   const h = { "apikey": cfg.sbKey, "Content-Type":"application/json" };
@@ -563,14 +672,18 @@ async function cofreEscribir(estado){
 
 // Estado que viaja al cofre: las operaciones y sus notas.
 function estadoLocal(){
+  // Las operaciones que vienen del puente ya viajan como fills; subirlas otra
+  // vez agrupadas es lo que antes provocaba duplicados al cambiar una regla.
+  // Aqui solo van las que no tienen fills detras: las de un CSV o un JSON.
   const opsG = {};
-  for (const o of ops) opsG[o.id] = comprimir(o);
+  for (const o of ops) if (o.importada) opsG[o.id] = comprimir(o);
   return { v:1, ts:Date.now(), ops:opsG, meta:meta,
     mapas: { cuentas:cfg.mapCuentas, activos:cfg.mapActivos, ts:cfg.mapasTs } };
 }
 
 function comprimir(o){
   return { id:o.id, t0:o.t0, t1:o.t1, simbolo:o.simbolo, dir:o.dir, origen:o.origen,
+    importada: !!o.importada,
     off: Number(cfg.offMin) || 0,
     qty:o.qty, pEnt:o.pEnt, pSal:o.pSal, bruto:o.bruto, com:o.com, neto:o.neto,
     porCuenta:o.porCuenta, abierta:!!o.abierta,
@@ -680,6 +793,15 @@ function pintarCofre(){
 // Puente
 // ---------------------------------------------------------------------------
 let fills = [], ultSeq = 0, ops = [], abiertas = {}, ultHb = null;
+// Las operaciones sueltas llegan por dos sitios (el puente del PC y el cofre),
+// asi que se entra siempre por aqui para no meter la misma dos veces.
+const fillsVistos = new Set();
+function meterFill(f){
+  if (!f || !f.fillKey || fillsVistos.has(f.fillKey)) return false;
+  fillsVistos.add(f.fillKey);
+  fills.push(f);
+  return true;
+}
 let seleccion = new Set();   // operaciones marcadas para enviar
 
 async function pedir(ruta){
@@ -746,11 +868,12 @@ async function refrescarEstado(){
 }
 
 async function traerFills(desdeCero){
-  if (desdeCero){ fills = []; ultSeq = 0; }
+  if (desdeCero){ fills = []; ultSeq = 0; fillsVistos.clear(); }
   try {
     const d = await pedir("/fills?since=" + ultSeq);
     if (d && Array.isArray(d.fills) && d.fills.length){
-      for (const r of d.fills){ fills.push(r.fill); if (r.seq > ultSeq) ultSeq = r.seq; }
+      let nuevos = 0;
+      for (const r of d.fills){ if (meterFill(r.fill)) nuevos++; if (r.seq > ultSeq) ultSeq = r.seq; }
       construir(); pintar();
       if (cfg.auto){
         const nuevas = posterioresAlAuto();
@@ -902,7 +1025,12 @@ function construir(){
   for (const id of Object.keys(opsRemotas)){
     if (vistos[id]) continue;
     const r = opsRemotas[id];
-    grupos.push(Object.assign({}, r, { cuentas: r.cuentas || [] }));
+    // Solo las que no tienen operaciones sueltas detras. Las de NinjaTrader y
+    // MetaTrader se reconstruyen desde los fills del cofre, y meterlas aqui
+    // ademas seria contarlas dos veces.
+    const deFichero = r.importada || r.origen === "csv" || r.origen === "json";
+    if (!deFichero) continue;
+    grupos.push(Object.assign({}, r, { cuentas: r.cuentas || [], importada:true }));
   }
 
   // Segunda pasada: fusiona operaciones que en realidad son la misma, aunque
@@ -1197,6 +1325,68 @@ function textoVacio(){
 
 function esMovil(){ return window.innerWidth <= 760; }
 
+// Plan, setup y enlace: lo mismo que eliges en el journal, pero aqui, para que
+// la operacion se vaya ya completa y no haya que retocarla alli.
+function camposJournal(o, m){
+  const id = cssId(o.id);
+  const subs = PLAN_SUBS[m.plan] || null;
+
+  let h = '<div class="campos">';
+
+  h += '<div class="lin"><span class="et">Plan</span>'
+     + '<select id="pl_' + id + '"><option value="">— sin plan</option>'
+     + planes().map(p => '<option' + (m.plan === p ? " selected" : "") + '>'
+         + esc(p) + '</option>').join("")
+     + '</select>';
+  if (subs)
+    h += '<select id="ps_' + id + '"><option value="">— sin subtipo</option>'
+       + subs.map(x => '<option' + (m.planSub === x ? " selected" : "") + '>'
+           + esc(x) + '</option>').join("")
+       + '</select>';
+  h += '</div>';
+
+  const todos = SETUP_ESTRUCT.map(x => x.label)
+    .concat(setups().filter(x => !SETUP_ESTRUCT.some(e => e.label === x)));
+  h += '<div class="lin"><span class="et">Setup</span><div class="chipset">'
+     + todos.map(x => '<button type="button" data-setup="' + esc(x) + '"'
+         + (m.setups.indexOf(x) >= 0 ? ' class="on"' : '') + '>' + esc(x) + '</button>').join("")
+     + '</div></div>';
+
+  h += '<div class="lin"><span class="et">Enlace</span>'
+     + '<input type="url" id="en_' + id + '" placeholder="Enlace del gráfico (TradingView…)" value="'
+     + esc(m.enlace || "") + '"></div>';
+
+  return h + '</div>';
+}
+
+function atarCampos(td, o){
+  const id = cssId(o.id), m = metaDe(o.id);
+
+  const pl = el("pl_" + id);
+  if (pl) pl.onchange = () => {
+    m.plan = pl.value;
+    if (!(PLAN_SUBS[m.plan] || []).includes(m.planSub)) m.planSub = "";
+    guardarMeta(o.id);
+    pintar();            // el subtipo aparece o desaparece segun el plan
+  };
+
+  const ps = el("ps_" + id);
+  if (ps) ps.onchange = () => { m.planSub = ps.value; guardarMeta(o.id); };
+
+  const en = el("en_" + id);
+  if (en) en.oninput = () => { m.enlace = en.value.trim(); guardarMeta(o.id); };
+
+  for (const b of td.querySelectorAll("[data-setup]")){
+    b.onclick = e => {
+      e.stopPropagation();
+      const v = b.dataset.setup, i = m.setups.indexOf(v);
+      if (i >= 0) m.setups.splice(i, 1); else m.setups.push(v);
+      b.classList.toggle("on", i < 0);
+      guardarMeta(o.id);
+    };
+  }
+}
+
 function detalle(o, m){
   const tr = document.createElement("tr");
   tr.className = "detail";
@@ -1240,6 +1430,7 @@ function detalle(o, m){
              + '<span><b>Total</b></span><span><b>' + dinero(o.neto) + '</b></span></div>';
 
     td.innerHTML = '<div class="inner">' + lista +
+      (m.enviada ? "" : camposJournal(o, m)) +
       '<div class="notes">' +
         '<input type="text" id="et_' + cssId(o.id) + '" placeholder="Etiqueta / setup" value="' + esc(m.etiqueta) + '">' +
         '<input type="text" id="no_' + cssId(o.id) + '" placeholder="Notas de la operación" value="' + esc(m.nota) + '">' +
@@ -1262,6 +1453,7 @@ function detalle(o, m){
       '<th class="r">Entrada</th><th class="r">Salida</th><th class="r">Puntos</th>' +
       '<th class="r">Bruto</th><th class="r">Comis.</th><th class="r">Neto</th>' +
       '</tr></thead><tbody>' + filas + '</tbody></table>' +
+      (m.enviada ? "" : camposJournal(o, m)) +
       '<div class="notes">' +
         '<input type="text" id="et_' + cssId(o.id) + '" placeholder="Etiqueta / setup" value="' + esc(m.etiqueta) + '">' +
         '<input type="text" id="no_' + cssId(o.id) + '" placeholder="Notas de la operación" value="' + esc(m.nota) + '">' +
@@ -1283,6 +1475,7 @@ function detalle(o, m){
     if (no) no.oninput = () => { metaDe(o.id).nota = no.value; guardarMeta(o.id); };
     const sl = el("sl_" + cssId(o.id)), tp = el("tp_" + cssId(o.id));
     if (sl) sl.oninput = () => { metaDe(o.id).sl = sl.value; guardarMeta(o.id); };
+    if (!m.enviada) atarCampos(td, o);
     if (tp) tp.oninput = () => { metaDe(o.id).tp = tp.value; guardarMeta(o.id); };
     const b = td.querySelector("[data-marcar]");
     if (b) b.onclick = () => { const mm = metaDe(o.id); mm.enviada = !mm.enviada;
@@ -1516,7 +1709,14 @@ el("bMenu").onclick = () => {
   el("bMenu").textContent = pf.classList.contains("abierto") ? "Filtros ▴" : "Filtros ▾";
 };
 
-el("bRecargar").onclick = () => traerFills(true).then(refrescar);
+el("bRecargar").onclick = async () => {
+  const b = el("bRecargar");
+  b.disabled = true; b.textContent = "Recargando…";
+  await cofreFillsSiToca(true);
+  await traerFills(true);
+  refrescar();
+  b.disabled = false; b.textContent = "Recargar";
+};
 el("bEnviar").onclick = jAbrir;
 el("bEnv").onclick = () => {
   const pend = seleccionadas();
@@ -1638,7 +1838,7 @@ function opsDesdeCSV(texto){
       qty:qty, pEnt:num(c[iPe]), pSal:num(c[iPs]),
       bruto:total - com, com:com, neto:total,
       porCuenta: iPorC >= 0 ? num(c[iPorC]) : mediana(cuentas.map(x => x.neto)),
-      abierta:false, cuentas:cuentas
+      abierta:false, cuentas:cuentas, importada:true
     };
     fuera.push(o);
 
@@ -1669,7 +1869,8 @@ function opsDesdeJSON(texto){
       dir:r.direccion || r.dir, origen:org,
       qty:r.cantidad || r.qty || 0, pEnt:r.precio_entrada || 0, pSal:r.precio_salida || 0,
       bruto:r.resultado_bruto || 0, com:r.comision || 0, neto:r.resultado || 0,
-      porCuenta:r.resultado_por_cuenta || 0, abierta:false, cuentas:cuentas };
+      porCuenta:r.resultado_por_cuenta || 0, abierta:false, cuentas:cuentas,
+      importada:true };
   }).filter(o => o.id && o.t0);
 }
 
@@ -1893,6 +2094,53 @@ function resolverActivo(simbolo, contrato, activosJ){
 }
 
 // Cuentas y activos tal y como estan en tu journal.
+// Las mismas listas que usa tu journal. Son editables alli (Ajustes ->
+// Parametros del dashboard), asi que se leen de el; esto es solo el respaldo
+// por si todavia no lo hemos leido.
+const PLANES_DEF = ["ICT","LIBRE","GAMBLING","GAMBLING IPC","DATO",
+                    "DATO GAMBLING","NEW","LOCO","NO"];
+// Los setups de tu journal son de dos clases. Los ESTRUCTURADOS tienen campos
+// propios (el timeframe de un FVG, el nivel de una rotura) y se eligen alli;
+// desde aqui se manda el setup sin rellenar esos campos. Los SIMPLES son texto.
+const SETUP_ESTRUCT = [
+  { label:"Rotura de nivel",    k:"Nivel",     accion:"Rotura"  },
+  { label:"Rechazo de nivel",   k:"Nivel",     accion:"Rechazo" },
+  { label:"Nivel compras CTAS", k:"NivelCTAS", accion:"Compras" },
+  { label:"Nivel ventas CTAS",  k:"NivelCTAS", accion:"Ventas"  },
+  { label:"Rotura SMA",         k:"SMA",       accion:"Rotura"  },
+  { label:"Rechazo SMA",        k:"SMA",       accion:"Rechazo" },
+  { label:"Rotura Mogalef",     k:"Mogalef",   accion:"Rotura"  },
+  { label:"Rechazo Mogalef",    k:"Mogalef",   accion:"Rechazo" },
+  { label:"FVG",                k:"FVG"  },
+  { label:"iFVG",               k:"IFVG" }
+];
+// Los que el journal trata como simples de verdad.
+const SETUPS_SIMPLES = ["Pullback","Reversion","Continuacion","Range","News",
+                        "Mov. otro activo","Fibonacci 0,5","Fibonacci 0,61","Otro"];
+const SETUPS_DEF = SETUPS_SIMPLES.slice();
+
+// De la etiqueta que se ve a la etiqueta que entiende el journal.
+function tagDeSetup(label){
+  const e = SETUP_ESTRUCT.find(x => x.label === label);
+  if (e) return e.accion ? { k:e.k, accion:e.accion } : { k:e.k };
+  return { k: SETUPS_SIMPLES.includes(label) ? "simple" : "texto", name: label };
+}
+
+// Lo mismo que hace tu journal al pintar una etiqueta. Se replica para que el
+// texto de respaldo diga exactamente lo mismo que la etiqueta.
+function textoTag(t){
+  if (!t) return "";
+  if (t.k === "FVG")   return "FVG";
+  if (t.k === "IFVG")  return "iFVG";
+  if (t.k === "SMA")     return (t.accion || "") + " SMA";
+  if (t.k === "Mogalef") return (t.accion || "") + " Mogalef";
+  if (t.k === "Nivel")   return (t.accion || "") + " nivel";
+  if (t.k === "NivelCTAS") return "Nivel " + (t.accion || "").toLowerCase() + " CTAS";
+  return (t.name || "").trim();
+}
+// Subtipos de plan: en el journal van en el codigo, no en la lista editable.
+const PLAN_SUBS = { "ICT": ["Judas ICT","Continuacion ICT","Reversion ICT"] };
+
 function listasDelJournal(S){
   const cuentas = (S.accountsAll || [])
     .map(a => (typeof a === "string") ? a : (a.nombre || a.name || a.id))
@@ -1900,7 +2148,30 @@ function listasDelJournal(S){
   const activos = Object.keys((S.config && S.config.usd) || {});
   for (const t of (S.trades || []).slice(0, 600))
     if (t.activo && activos.indexOf(t.activo) < 0) activos.push(t.activo);
+
+  const lst = (S.config && S.config.listas) || {};
+  const planes = Array.isArray(lst.planes) && lst.planes.length ? lst.planes.slice() : null;
+  const setups = Array.isArray(lst.setups) && lst.setups.length ? lst.setups.slice() : null;
+  if (planes || setups){
+    cfg.listas = { planes: planes || cfg.listas.planes,
+                   setups: setups || cfg.listas.setups, ts: Date.now() };
+    guardarCfg();
+  }
   return { cuentas: cuentas, activos: activos };
+}
+
+function planes(){ return (cfg.listas && cfg.listas.planes) || PLANES_DEF; }
+function setups(){ return (cfg.listas && cfg.listas.setups) || SETUPS_DEF; }
+
+// Una vez al dia basta: estas listas no cambian casi nunca y la fila del
+// journal pesa bastante.
+async function refrescarListas(){
+  if (!cofreListo()) return;
+  if (cfg.listas && cfg.listas.ts && Date.now() - cfg.listas.ts < 86400000) return;
+  try {
+    const d = await cofreLlamar("panel_get", { p_box: cfg.box }, 20000);
+    if (d && typeof d === "object" && !Array.isArray(d)) listasDelJournal(d);
+  } catch(e){ /* nos quedamos con las de siempre */ }
 }
 
 let _listasJ = { cuentas:[], activos:[] };
@@ -1997,7 +2268,15 @@ function aTrade(o){
     pnlReal: Number(o.neto.toFixed(2)),                 // total de las replicas
     sl: Number(m.sl) || Number(o.sl) || undefined,
     tp: Number(m.tp) || Number(o.tp) || undefined,
-    setup: m.etiqueta || undefined,
+    plan: m.plan || undefined,
+    planSub: m.planSub || undefined,
+    enlace: m.enlace || undefined,
+    // Las etiquetas van hechas, no como texto: el journal parte por comas, y
+    // dos de tus setups llevan coma ("Fibonacci 0,5") y se romperian.
+    setupTags: (m.setups && m.setups.length) ? m.setups.map(tagDeSetup) : undefined,
+    setup: (m.setups && m.setups.length)
+             ? m.setups.map(x => textoTag(tagDeSetup(x))).join(" + ")
+             : (m.etiqueta || undefined),
     observaciones: m.nota || undefined,
     origenReceptor: o.origen
   };
@@ -2149,9 +2428,75 @@ const dlg = el("dlg");
 el("bCfg").onclick = () => {
   el("cBridge").value=cfg.bridge; el("cToken").value=cfg.token;
   el("cSbUrl").value=cfg.sbUrl; el("cSbKey").value=cfg.sbKey; el("cBox").value=cfg.box;
-  el("cPuntos").value=cfg.puntos; el("cOff").value=cfg.offMin; dlg.showModal();
+  el("cPuntos").value=cfg.puntos; el("cOff").value=cfg.offMin;
+  el("cDias").value = String(fillsRemoto.dias || 0);
+  pintarEstadoFills();
+  dlg.showModal();
 };
 el("bCerrar").onclick = () => dlg.close();
+function pintarEstadoFills(){
+  const c = el("cEstadoFills");
+  if (!c) return;
+  if (!cofreListo()){ c.textContent = "Configura el cofre para ver el historial guardado."; return; }
+  const d = fillsRemoto;
+  c.innerHTML = "<b>" + d.n + "</b> operaciones sueltas guardadas en el cofre"
+    + (d.corte ? " · nada anterior al <b>" + new Date(d.corte).toLocaleDateString("es-ES") + "</b>" : "")
+    + (d.dias ? " · borrando lo de más de <b>" + d.dias + " días</b>" : " · sin borrado automático");
+}
+
+async function aplicarGuardado(corte, dias, boton){
+  const txt = boton ? boton.textContent : "";
+  if (boton){ boton.disabled = true; boton.textContent = "Aplicando…"; }
+  try {
+    const quedan = await cofreGuardado(corte, dias);
+    fillsRemoto.corte = corte;
+    fillsRemoto.dias  = dias;
+    fillsRemoto.n     = quedan;
+    // Y fuera tambien de este dispositivo, o al recargar vuelven a salir.
+    if (corte){
+      fills = fills.filter(f => {
+        const t = Date.parse(String(f.at||"").replace(" ","T"));
+        if (Number.isFinite(t) && t < corte){ fillsVistos.delete(f.fillKey); return false; }
+        return true;
+      });
+    }
+    construir(); refrescar(); pintarEstadoFills();
+    if (boton){ boton.textContent = "Hecho · quedan " + quedan; setTimeout(()=>{
+      boton.disabled = false; boton.textContent = txt; }, 2500); }
+  } catch(e){
+    if (boton){ boton.disabled = false; boton.textContent = "No se pudo: " + (e.message||"error"); }
+  }
+}
+
+el("cDias").onchange = () => {
+  const dias = parseInt(el("cDias").value, 10) || 0;
+  const corte = dias > 0
+    ? Math.max(fillsRemoto.corte, Math.floor((Date.now() - dias*86400000)/86400000)*86400000)
+    : fillsRemoto.corte;
+  aplicarGuardado(corte, dias, null);
+  pintarEstadoFills();
+};
+
+el("bCorte").onclick = () => {
+  const v = el("cCorte").value;
+  if (!v){ el("cCorte").focus(); return; }
+  const t = Date.parse(v + "T00:00:00");
+  if (!Number.isFinite(t)) return;
+  if (!confirm("Se borrará todo lo anterior al " + new Date(t).toLocaleDateString("es-ES")
+    + ", en todos los dispositivos.\n\nTu journal no se toca. ¿Seguir?")) return;
+  aplicarGuardado(t, fillsRemoto.dias, el("bCorte"));
+};
+
+for (const b of document.querySelectorAll("[data-corte]")){
+  b.onclick = () => {
+    const dias = parseInt(b.dataset.corte, 10);
+    const t = Math.floor((Date.now() - dias*86400000)/86400000)*86400000;
+    if (!confirm("Se borrará todo lo anterior al " + new Date(t).toLocaleDateString("es-ES")
+      + ", en todos los dispositivos.\n\nTu journal no se toca. ¿Seguir?")) return;
+    aplicarGuardado(t, fillsRemoto.dias, b);
+  };
+}
+
 el("bArreglar").onclick = async () => {
   const b = el("bArreglar");
   if (!cofreListo()){ b.textContent = "Configura antes el cofre"; return; }
@@ -2213,13 +2558,19 @@ el("bVaciar").onclick = async () => {
     + "Tu journal NO se toca. Despues vuelve a importar el CSV.\n\n¿Seguir?")) return;
   const b = el("bVaciar");
   b.disabled = true; b.textContent = "Vaciando…";
-  opsRemotas = {}; ops = []; fills = []; ultSeq = 0;
+  opsRemotas = {}; ops = []; fills = []; ultSeq = 0; fillsVistos.clear();
   meta = {}; metaSucia = {};
   try { localStorage.removeItem("receptor.meta"); } catch(e){}
   seleccion.clear();
   try {
     await cofreEscribir({ v:1, ts:Date.now(), ops:{}, meta:{},
       mapas:{ cuentas:cfg.mapCuentas, activos:cfg.mapActivos, ts:cfg.mapasTs } });
+    // Y la fila de operaciones sueltas, que es donde esta casi todo.
+    await cofreLlamar("panel_set", { p_box: cofreCajaFills(),
+      p_data: { v:1, ts:Date.now(), corte:Date.now(), dias:fillsRemoto.dias||0, fills:[] } }, 20000);
+    fillsVistos.clear();
+    fillsRemoto = { n:0, corte:Date.now(), dias:fillsRemoto.dias||0, ts:Date.now() };
+    pintarEstadoFills();
     b.textContent = "Historial vaciado";
   } catch(e){
     b.disabled = false;
@@ -2269,7 +2620,10 @@ refrescarEstado();
 
 // Primero lo que haya en el cofre (es lo unico que ve el Mac), luego el
 // puente local si existe (solo en el PC).
+refrescarListas();
+
 cofreCiclo(false)
+  .then(() => cofreFillsSiToca(true))
   .then(() => traerFills(true))
   .then(refrescar)
   .then(() => cofreCiclo(false));
@@ -2283,6 +2637,11 @@ window.addEventListener("resize", () => {
 setInterval(refrescarEstado, 5000);
 setInterval(() => { traerFills(false); refrescarBotones(); }, 3000);
 setInterval(() => cofreCiclo(false), 20000);
+setInterval(() => cofreFillsSiToca(false), 60000);
+// Al volver a la app desde otra pestaña o desbloqueando el movil.
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) cofreFillsSiToca(false);
+});
 el("bGuardar").addEventListener("click", () => setTimeout(() => cofreCiclo(true), 300));
 </script>
 </body>
